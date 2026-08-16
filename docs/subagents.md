@@ -1,26 +1,34 @@
-# Субагенты и навыки (этап 1)
+# Субагенты и навыки
 
 Файлы агентов Cursor (системный промпт):
 
+### Этап 1: Связь и сессии
 | Файл | Имя | Когда звать |
 |---|---|---|
-| `.cursor/agents/nord-stage1-implementer.md` | `nord-stage1-implementer` | одна волна кода |
-| `.cursor/agents/nord-stage1-reviewer.md` | `nord-stage1-reviewer` | сразу после волны |
+| `.cursor/agents/nord-stage1-implementer.md` | `nord-stage1-implementer` | одна волна кода этапа 1 |
+| `.cursor/agents/nord-stage1-reviewer.md` | `nord-stage1-reviewer` | сразу после волны этапа 1 |
 | `.cursor/agents/nord-stage1-final-reviewer.md` | `nord-stage1-final-reviewer` | после волны 5, `dotnet test` зелёный |
 
-Для модели: задачи в `AGENT_PLAN.md` **последовательные** — их нельзя делать параллельно в одном дереве файлов.
+### Этап 2: Экран и процессы
+| Файл | Имя | Когда звать |
+|---|---|---|
+| `.cursor/agents/nord-stage2-implementer.md` | `nord-stage2-implementer` | одна волна кода этапа 2 |
+| `.cursor/agents/nord-stage2-reviewer.md` | `nord-stage2-reviewer` | сразу после волны этапа 2 |
+| `.cursor/agents/nord-stage2-final-reviewer.md` | `nord-stage2-final-reviewer` | после волны 4, `dotnet test` зелёный |
+
+Для модели: задачи в `AGENT_PLAN.md` и `AGENT_PLAN_STAGE2.md` **последовательные** — их нельзя делать параллельно в одном дереве файлов.
 
 ## Число
 
 | Параметр | Значение | Почему |
 |---|---|---|
 | `concurrent_implementers` | **1** | Один sln, общие типы. Параллельные писатели конфликтуют |
-| `waves` | **5** | Склеены зависимые Task 1–9 |
+| `waves_stage1` | **5** | Склеены зависимые Task 1–9 |
+| `waves_stage2` | **4** | Склеены зависимые Task 10–17 |
 | `reviewer_per_wave` | **1** | После каждой волны, не после каждого мелкого шага |
-| `final_reviewer` | **1** | Когда `dotnet test` зелёный |
-| Всего вызовов | **11** (5+5+1) | Не 9 параллельных implementer |
+| `final_reviewer` | **1** | Когда `dotnet test` зелёный в конце этапа |
 
-Не путать «5 волн» с «5 одновременных агентов». Живой writer всегда один.
+Не путать «волны» с «одновременными агентами». Живой writer всегда один.
 
 ## Волны
 

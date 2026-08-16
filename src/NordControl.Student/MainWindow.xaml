@@ -3,10 +3,66 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:NordControl.Student"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Nord Control — ученик"
+        Height="115" Width="540"
+        WindowStartupLocation="Manual"
+        ResizeMode="NoResize"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI"
+        Topmost="False">
+    <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Margin="6" Padding="12,8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-    </Grid>
+            <!-- Status Banner Header -->
+            <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="StatusIndicator" Width="10" Height="10" Fill="#94A3B8" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusHeaderTextBlock" Text="Nord Control — ожидание класса" FontWeight="SemiBold" FontSize="13" Foreground="#1E293B" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <TextBlock x:Name="ErrorTextBlock" Grid.Column="1" Text="" FontSize="11" Foreground="#EF4444" FontWeight="Medium" VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="180"/>
+            </Grid>
+
+            <!-- Control Bar (PIN, IP, Connect button) -->
+            <Grid Grid.Row="1" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- PIN Input -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <TextBlock Text="PIN:" FontSize="12" Foreground="#64748B" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox x:Name="PinTextBox" Width="68" Height="28" MaxLength="4" FontSize="14" FontWeight="Bold" FontFamily="Consolas, Segoe UI" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" BorderBrush="#CBD5E1" BorderThickness="1"/>
+                </StackPanel>
+
+                <!-- Teacher IP (Optional) -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <TextBlock Text="IP:" FontSize="12" Foreground="#64748B" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox x:Name="TeacherIpTextBox" Width="120" Height="28" FontSize="12" VerticalContentAlignment="Center" Padding="4,0" ToolTip="IP учителя (опционально, если автопоиск недоступен)" BorderBrush="#CBD5E1" BorderThickness="1"/>
+                </StackPanel>
+
+                <!-- Connect Button -->
+                <Button x:Name="ConnectButton" Grid.Column="3" Content="Подключиться" Height="28" Padding="14,0" FontWeight="SemiBold" FontSize="12" Background="#2563EB" Foreground="White" BorderThickness="0" Click="ConnectButton_Click" Cursor="Hand">
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="4"/>
+                        </Style>
+                    </Button.Resources>
+                </Button>
+            </Grid>
+        </Grid>
+    </Border>
 </Window>

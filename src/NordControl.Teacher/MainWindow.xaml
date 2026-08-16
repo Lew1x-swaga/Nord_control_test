@@ -3,10 +3,129 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:NordControl.Teacher"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="Nord Control — учитель"
+        Height="560" Width="880"
+        MinHeight="480" MinWidth="750"
+        WindowStartupLocation="CenterScreen"
+        Background="#F8FAFC"
+        FontFamily="Segoe UI">
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
+        <!-- Top Control Panel -->
+        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Class Name & PIN -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                        <TextBlock Text="Имя класса" FontSize="11" Foreground="#64748B" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <TextBox x:Name="ClassNameTextBox" Text="Класс" Width="140" Height="32" VerticalContentAlignment="Center" Padding="8,0" FontSize="13" BorderBrush="#CBD5E1" BorderThickness="1"/>
+                    </StackPanel>
+
+                    <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
+                        <TextBlock Text="PIN-код" FontSize="11" Foreground="#64748B" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <Border Background="#F1F5F9" CornerRadius="4" Padding="12,2" BorderBrush="#CBD5E1" BorderThickness="1">
+                            <TextBlock x:Name="PinTextBlock" Text="1234" FontSize="26" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center" FontFamily="Consolas, Segoe UI"/>
+                        </Border>
+                    </StackPanel>
+
+                    <Button x:Name="NewPinButton" Content="Новый PIN" Height="32" Padding="10,0" Margin="0,16,0,0" Click="NewPinButton_Click" Background="#F8FAFC" BorderBrush="#CBD5E1" Cursor="Hand"/>
+                </StackPanel>
+
+                <!-- Right: Action Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
+                    <Button x:Name="StartClassButton" Content="Начать класс" Height="36" Padding="18,0" Margin="0,0,10,0" FontWeight="SemiBold" FontSize="13" Background="#10B981" Foreground="White" BorderThickness="0" Click="StartClassButton_Click" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                    <Button x:Name="StopClassButton" Content="Завершить класс" Height="36" Padding="18,0" FontWeight="SemiBold" FontSize="13" Background="#EF4444" Foreground="White" BorderThickness="0" IsEnabled="False" Click="StopClassButton_Click" Cursor="Hand">
+                        <Button.Resources>
+                            <Style TargetType="Border">
+                                <Setter Property="CornerRadius" Value="4"/>
+                            </Style>
+                        </Button.Resources>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Workspace (Split: Students | Screen placeholder) -->
+        <Grid Grid.Row="1" Margin="16,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="220" MaxWidth="400"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Students List -->
+            <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Список учеников" FontSize="13" FontWeight="SemiBold" Foreground="#334155" Margin="6,4,6,8"/>
+
+                    <ListBox x:Name="StudentsListBox" Grid.Row="1" BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="8,6" Margin="0,2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13" Foreground="#1E293B"/>
+                                            <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="1" VerticalAlignment="Center" Padding="6,2" CornerRadius="3" Background="{Binding StatusBackground}">
+                                            <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Medium" Foreground="{Binding StatusForeground}"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" Background="Transparent"/>
+
+            <!-- Right: Screen Placeholder (Stage 2) -->
+            <Border Grid.Column="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Экран — этап 2" FontSize="20" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                    <TextBlock Text="выберите ученика / экран появится на этапе 2" FontSize="13" Foreground="#94A3B8" Margin="0,8,0,0" HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="16,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusTextBlock" Grid.Column="0" Text="класс остановлен" FontSize="12" Foreground="#64748B" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Nord Control v0.1.0" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

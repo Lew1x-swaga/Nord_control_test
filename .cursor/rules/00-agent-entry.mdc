@@ -5,12 +5,10 @@ alwaysApply: true
 
 # Вход
 
-Код: только этап 1. Источник задач: `docs/AGENT_PLAN.md`. Оркестрация: `docs/subagents.md`.
+Код: этап 1 (завершен) или этап 2. Источники задач: `docs/AGENT_PLAN.md` (этап 1), `docs/AGENT_PLAN_STAGE2.md` (этап 2). Оркестрация: `docs/subagents.md`.
 
-**READ (порядок):** `AGENTS.md` → `docs/AGENT_PLAN.md` → `docs/requirements.md` (FR-01…13) → `docs/protocol.md` → `docs/invariants.md`. Не читать этап 2/3 как работу.
+**READ (порядок для Этапа 2):** `AGENTS.md` → `docs/AGENT_PLAN_STAGE2.md` → `docs/requirements.md` (FR-20…23) → `docs/protocol.md` → `docs/invariants.md`. Не читать этап 3 как работу.
 
-**n субагентов:** 1 implementer одновременно (`nord-stage1-implementer`). 5 волн. После волны — `nord-stage1-reviewer`. В конце — `nord-stage1-final-reviewer`. Файлы: `.cursor/agents/`.
+**n субагентов:** 1 implementer одновременно (`nord-stage2-implementer`). 4 волны. После волны — `nord-stage2-reviewer`. В конце — `nord-stage2-final-reviewer`. Файлы: `.cursor/agents/`.
 
-**STOP:** DXGI, JPEG, process list, launch, blocklist, MSI, автозапуск, этап 2. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`; не коммитить при BLOCKED.
-
-Skill: `.cursor/skills/executing-nord-stage1/SKILL.md`
+**STOP:** launch_app, blocklist, MSI, автозапуск, службы, этап 3. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`.

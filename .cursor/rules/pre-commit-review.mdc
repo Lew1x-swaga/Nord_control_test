@@ -32,10 +32,10 @@ alwaysApply: true
 rg -n "System.Windows|HWND|HMONITOR|DXGI|SharpDX|Jpeg|blocklist|AppLocker" src/NordControl.Protocol src/NordControl.Core
 ```
 
-Запрет в любом `src/` на этапе 1: DXGI, JPEG-захват, process list, launch, blocklist, автозапуск, службы.
-
 - **PASS** — нет совпадений; Protocol без Win32.
 - **FAIL** — каждый импорт/вызов: `file:line`.
+
+Запрет для Этапа 2: `set_block_list`, `launch_app`, `Process.Kill`, `AppLocker`, `WFP`, автозапуск, службы, драйверы (Этап 3).
 
 ---
 
