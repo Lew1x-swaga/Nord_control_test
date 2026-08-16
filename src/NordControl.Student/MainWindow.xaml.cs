@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using NordControl.Core;
+using NordControl.Student.Capture;
+using NordControl.Student.Services;
 using MediaColor = System.Windows.Media.Color;
 
 namespace NordControl.Student;
@@ -14,6 +16,8 @@ public partial class MainWindow : Window
     private ClassClient? _client;
     private CancellationTokenSource? _clientCts;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
+    private readonly IScreenCapturer _screenCapturer = new DxgiScreenCapturer();
+    private readonly ProcessMonitor _processMonitor = new();
 
     private bool _hasJoinedClass;
     private string? _currentClassPin;
@@ -102,7 +106,11 @@ public partial class MainWindow : Window
         _client?.Dispose();
 
         _clientCts = new CancellationTokenSource();
-        _client = new ClassClient(pin, manualTeacherIp: manualIp);
+        _client = new ClassClient(pin, manualTeacherIp: manualIp)
+        {
+            CaptureFrameCallback = (ct) => _screenCapturer.CaptureFrameAsync(maxDimension: 1280, quality: 70, ct: ct),
+            ProcessListCallback = () => _processMonitor.CollectProcessList(ProcessMonitor.MaxItems)
+        };
         _client.StatusChanged += OnClientStatusChanged;
         _client.Error += OnClientError;
 
@@ -169,6 +177,7 @@ public partial class MainWindow : Window
             _notifyIcon?.Dispose();
             _clientCts?.Cancel();
             _client?.Dispose();
+            _screenCapturer.Dispose();
             base.OnClosing(e);
             return;
         }
@@ -184,6 +193,7 @@ public partial class MainWindow : Window
                 _notifyIcon?.Dispose();
                 _clientCts?.Cancel();
                 _client?.Dispose();
+                _screenCapturer.Dispose();
                 base.OnClosing(e);
                 return;
             }
@@ -196,6 +206,7 @@ public partial class MainWindow : Window
         _notifyIcon?.Dispose();
         _clientCts?.Cancel();
         _client?.Dispose();
+        _screenCapturer.Dispose();
         base.OnClosing(e);
     }
 }

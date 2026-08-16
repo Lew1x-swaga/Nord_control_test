@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using NordControl.Core.Policies;
 using NordControl.Protocol;
 
 namespace NordControl.Core;
@@ -15,6 +18,9 @@ public class ClassClient : IAsyncDisposable, IDisposable
     private readonly int _tcpPort;
     private readonly IClock _clock;
     private readonly StudentSession _session;
+    private readonly IAppBlocker _appBlocker;
+    private readonly IAppLauncher _appLauncher;
+    private readonly InstalledAppsScanner _installedAppsScanner = new();
 
     private string _pin;
     private string? _manualTeacherIp;
@@ -35,6 +41,13 @@ public class ClassClient : IAsyncDisposable, IDisposable
     public StudentSession Session => _session;
     public bool IsRunning => _cts != null && !_cts.IsCancellationRequested;
 
+    public IAppBlocker AppBlocker => _appBlocker;
+    public IAppLauncher AppLauncher => _appLauncher;
+    public Func<IReadOnlyList<InstalledAppInfo>>? InstalledAppsProvider { get; set; }
+
+    public Func<CancellationToken, Task<JpegFrame?>>? CaptureFrameCallback { get; set; }
+    public Func<WireMessage>? ProcessListCallback { get; set; }
+
     public event Action<StudentSession>? StatusChanged;
     public event Action<string>? Error;
 
@@ -44,7 +57,10 @@ public class ClassClient : IAsyncDisposable, IDisposable
         int tcpPort = ProtocolConstants.TcpPort,
         string? manualTeacherIp = null,
         string? displayName = null,
-        IClock? clock = null)
+        IClock? clock = null,
+        IAppBlocker? appBlocker = null,
+        IAppLauncher? appLauncher = null,
+        Func<IReadOnlyList<InstalledAppInfo>>? installedAppsProvider = null)
     {
         _pin = pin ?? string.Empty;
         _udpPort = udpPort;
@@ -52,10 +68,17 @@ public class ClassClient : IAsyncDisposable, IDisposable
         _manualTeacherIp = string.IsNullOrWhiteSpace(manualTeacherIp) ? null : manualTeacherIp.Trim();
         _displayName = displayName;
         _clock = clock ?? new SystemClock();
+        _appBlocker = appBlocker ?? new RamAppBlocker();
+        _appLauncher = appLauncher ?? new AppLauncher();
+        InstalledAppsProvider = installedAppsProvider;
 
         _session = new StudentSession();
         _session.StatusChanged += (oldStatus, newStatus) =>
         {
+            if (newStatus == SessionStatus.Ended || newStatus == SessionStatus.Idle)
+            {
+                _appBlocker.Clear();
+            }
             StatusChanged?.Invoke(_session);
         };
     }
@@ -322,11 +345,34 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
         _session.OnJoinOk(studentId, sessionToken, _clock.UtcNow);
 
-        // Start active communication loop
+        // Send installed_hints upon successful join
+        try
+        {
+            var apps = InstalledAppsProvider?.Invoke() ?? _installedAppsScanner.ScanInstalledApps();
+            if (apps != null && apps.Count > 0)
+            {
+                var hintsMsg = new WireMessage
+                {
+                    V = ProtocolConstants.Version,
+                    Type = "installed_hints",
+                    Apps = apps.ToList()
+                };
+                var hintsBytes = WireMessage.SerializeUtf8(hintsMsg);
+                await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, hintsBytes, ct);
+            }
+        }
+        catch
+        {
+            // Transient error scanning or sending hints
+        }
+
+        // Start active communication loops
         using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
         var heartbeatTask = Task.Run(() => HeartbeatLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
         var tickTask = Task.Run(() => TickLoopAsync(sessionCts.Token), sessionCts.Token);
+        var captureTask = Task.Run(() => ScreenCaptureLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
+        var processTask = Task.Run(() => ProcessListLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
 
         try
         {
@@ -348,9 +394,26 @@ public class ClassClient : IAsyncDisposable, IDisposable
                     {
                         if (wireMsg.Type == "session_end")
                         {
+                            _appBlocker.Clear();
                             _session.OnSessionEnd();
                             _session.ResetToIdle();
                             break;
+                        }
+                        else if (wireMsg.Type == "stream_start")
+                        {
+                            _session.StreamEnabled = true;
+                        }
+                        else if (wireMsg.Type == "stream_stop")
+                        {
+                            _session.StreamEnabled = false;
+                        }
+                        else if (wireMsg.Type == "launch_app")
+                        {
+                            _appLauncher.Launch(wireMsg.Exe ?? string.Empty, wireMsg.LaunchTarget);
+                        }
+                        else if (wireMsg.Type == "set_block_list")
+                        {
+                            _appBlocker.SetBlockList(wireMsg.ExeNames ?? (IEnumerable<string>)Array.Empty<string>());
                         }
                     }
                 }
@@ -372,7 +435,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
             sessionCts.Cancel();
             try
             {
-                await Task.WhenAll(heartbeatTask, tickTask);
+                await Task.WhenAll(heartbeatTask, tickTask, captureTask, processTask);
             }
             catch { }
         }
@@ -437,10 +500,91 @@ public class ClassClient : IAsyncDisposable, IDisposable
         }
     }
 
+    private async Task ScreenCaptureLoopAsync(NetworkStream stream, SemaphoreSlim sendLock, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (!_session.ShouldCapture || CaptureFrameCallback == null)
+                {
+                    await Task.Delay(100, ct);
+                    continue;
+                }
+
+                var frame = await CaptureFrameCallback(ct);
+                if (frame.HasValue && _session.ShouldCapture)
+                {
+                    var framePayload = frame.Value.Encode();
+                    await sendLock.WaitAsync(ct);
+                    try
+                    {
+                        await FrameCodec.WriteAsync(stream, ProtocolConstants.JpegMessageType, framePayload, ct);
+                    }
+                    finally
+                    {
+                        sendLock.Release();
+                    }
+                }
+
+                // ~10 fps (100ms interval, 8-12 fps target)
+                await Task.Delay(100, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // Ignore transient frame capture/send failures
+            }
+        }
+    }
+
+    private async Task ProcessListLoopAsync(NetworkStream stream, SemaphoreSlim sendLock, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(2500, ct);
+
+                if (_session.Status != SessionStatus.Online || ProcessListCallback == null)
+                {
+                    continue;
+                }
+
+                var procMsg = ProcessListCallback();
+                if (procMsg != null)
+                {
+                    var procPayload = WireMessage.SerializeUtf8(procMsg);
+                    await sendLock.WaitAsync(ct);
+                    try
+                    {
+                        await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, procPayload, ct);
+                    }
+                    finally
+                    {
+                        sendLock.Release();
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // Ignore transient process list send failures
+            }
+        }
+    }
+
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        _appBlocker.Clear();
         _cts?.Cancel();
         _cts?.Dispose();
     }

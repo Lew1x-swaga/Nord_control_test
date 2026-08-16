@@ -52,18 +52,24 @@ public class ClassHub : IAsyncDisposable
 
     private int _heartbeatSeq;
     private bool _isDisposed;
+    private string? _selectedStudentId;
 
     public int UdpPort => _udpPort;
     public int TcpPort => _tcpPort;
     public string? ClassName => _className;
     public string? Pin => _pin;
     public bool IsRunning => _cts != null && !_cts.IsCancellationRequested;
+    public string? SelectedStudentId => _selectedStudentId;
 
     public IReadOnlyCollection<ConnectedStudent> Students => _studentsById.Values.ToList();
 
     public event Action<ConnectedStudent>? StudentJoined;
     public event Action<ConnectedStudent>? StudentStatusChanged;
     public event Action<ConnectedStudent>? StudentLeft;
+    public event Action<string, JpegFrame>? ScreenFrameReceived;
+    public event Action<string, WireMessage>? ProcessListReceived;
+    public event Action<string, IReadOnlyList<InstalledAppInfo>>? InstalledHintsReceived;
+    public event Action<string?>? SelectedStudentChanged;
 
     private sealed class StudentConnection
     {
@@ -85,6 +91,191 @@ public class ClassHub : IAsyncDisposable
         _udpPort = udpPort;
         _tcpPort = tcpPort;
         _clock = clock ?? new SystemClock();
+    }
+
+    public async Task SelectStudentAsync(string? studentId)
+    {
+        var previousId = _selectedStudentId;
+        if (previousId == studentId)
+        {
+            return;
+        }
+
+        _selectedStudentId = studentId;
+        SelectedStudentChanged?.Invoke(studentId);
+
+        // 1. Send stream_stop to previous student
+        if (previousId != null && _activeConnections.TryGetValue(previousId, out var prevConn))
+        {
+            var stopMsg = new WireMessage
+            {
+                V = ProtocolConstants.Version,
+                Type = "stream_stop"
+            };
+            var stopPayload = WireMessage.SerializeUtf8(stopMsg);
+
+            try
+            {
+                if (await prevConn.SendLock.WaitAsync(500))
+                {
+                    try
+                    {
+                        await FrameCodec.WriteAsync(prevConn.Stream, ProtocolConstants.JsonMessageType, stopPayload, CancellationToken.None);
+                    }
+                    finally
+                    {
+                        prevConn.SendLock.Release();
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 2. Send stream_start to newly selected student
+        if (studentId != null && _activeConnections.TryGetValue(studentId, out var newConn))
+        {
+            var startMsg = new WireMessage
+            {
+                V = ProtocolConstants.Version,
+                Type = "stream_start"
+            };
+            var startPayload = WireMessage.SerializeUtf8(startMsg);
+
+            try
+            {
+                if (await newConn.SendLock.WaitAsync(500))
+                {
+                    try
+                    {
+                        await FrameCodec.WriteAsync(newConn.Stream, ProtocolConstants.JsonMessageType, startPayload, CancellationToken.None);
+                    }
+                    finally
+                    {
+                        newConn.SendLock.Release();
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
+    public Task SelectStudent(string? studentId) => SelectStudentAsync(studentId);
+
+    public async Task<bool> SendLaunchAppAsync(string studentId, string exe, string? launchTarget = null)
+    {
+        if (string.IsNullOrWhiteSpace(studentId) || !_activeConnections.TryGetValue(studentId, out var conn))
+        {
+            return false;
+        }
+
+        var msg = new WireMessage
+        {
+            V = ProtocolConstants.Version,
+            Type = "launch_app",
+            Exe = exe,
+            LaunchTarget = launchTarget
+        };
+
+        var payload = WireMessage.SerializeUtf8(msg);
+
+        try
+        {
+            if (await conn.SendLock.WaitAsync(500))
+            {
+                try
+                {
+                    await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, payload, CancellationToken.None);
+                    return true;
+                }
+                finally
+                {
+                    conn.SendLock.Release();
+                }
+            }
+        }
+        catch
+        {
+            // Transient send error
+        }
+
+        return false;
+    }
+
+    public async Task<int> BroadcastLaunchAppAsync(string exe, string? launchTarget = null)
+    {
+        var onlineStudentIds = _studentsById.Values
+            .Where(s => s.Status == StudentHubStatus.Online)
+            .Select(s => s.Id)
+            .ToList();
+
+        var successCount = 0;
+        foreach (var id in onlineStudentIds)
+        {
+            if (await SendLaunchAppAsync(id, exe, launchTarget))
+            {
+                successCount++;
+            }
+        }
+
+        return successCount;
+    }
+
+    public async Task<bool> SendBlockListAsync(string studentId, IReadOnlyList<string> exeNames)
+    {
+        if (string.IsNullOrWhiteSpace(studentId) || !_activeConnections.TryGetValue(studentId, out var conn))
+        {
+            return false;
+        }
+
+        var msg = new WireMessage
+        {
+            V = ProtocolConstants.Version,
+            Type = "set_block_list",
+            ExeNames = exeNames != null ? exeNames.ToList() : new List<string>()
+        };
+
+        var payload = WireMessage.SerializeUtf8(msg);
+
+        try
+        {
+            if (await conn.SendLock.WaitAsync(500))
+            {
+                try
+                {
+                    await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, payload, CancellationToken.None);
+                    return true;
+                }
+                finally
+                {
+                    conn.SendLock.Release();
+                }
+            }
+        }
+        catch
+        {
+            // Transient send error
+        }
+
+        return false;
+    }
+
+    public async Task<int> BroadcastBlockListAsync(IReadOnlyList<string> exeNames)
+    {
+        var onlineStudentIds = _studentsById.Values
+            .Where(s => s.Status == StudentHubStatus.Online)
+            .Select(s => s.Id)
+            .ToList();
+
+        var successCount = 0;
+        foreach (var id in onlineStudentIds)
+        {
+            if (await SendBlockListAsync(id, exeNames))
+            {
+                successCount++;
+            }
+        }
+
+        return successCount;
     }
 
     public Task StartClass(string className, string pin, CancellationToken ct = default)
@@ -218,6 +409,8 @@ public class ClassHub : IAsyncDisposable
                 StudentLeft?.Invoke(updated);
             }
         }
+
+        _selectedStudentId = null;
 
         _cts.Dispose();
         _cts = null;
@@ -425,6 +618,22 @@ public class ClassHub : IAsyncDisposable
                 connection.SendLock.Release();
             }
 
+            // If this student is currently selected, send stream_start
+            if (_selectedStudentId == studentId)
+            {
+                var startMsg = new WireMessage { V = ProtocolConstants.Version, Type = "stream_start" };
+                var startPayload = WireMessage.SerializeUtf8(startMsg);
+                await connection.SendLock.WaitAsync(ct);
+                try
+                {
+                    await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, startPayload, ct);
+                }
+                finally
+                {
+                    connection.SendLock.Release();
+                }
+            }
+
             if (isReconnect)
             {
                 StudentStatusChanged?.Invoke(student);
@@ -444,6 +653,33 @@ public class ClassHub : IAsyncDisposable
                 }
 
                 UpdateStudentActivity(studentId);
+
+                if (frame.Value.Type == ProtocolConstants.JpegMessageType)
+                {
+                    if (_selectedStudentId == studentId)
+                    {
+                        var jpeg = JpegFrame.Decode(frame.Value.Payload);
+                        if (jpeg != null)
+                        {
+                            ScreenFrameReceived?.Invoke(studentId, jpeg.Value);
+                        }
+                    }
+                }
+                else if (frame.Value.Type == ProtocolConstants.JsonMessageType)
+                {
+                    var wireMsg = WireMessage.Deserialize(frame.Value.Payload);
+                    if (wireMsg != null)
+                    {
+                        if (wireMsg.Type == "process_list")
+                        {
+                            ProcessListReceived?.Invoke(studentId, wireMsg);
+                        }
+                        else if (wireMsg.Type == "installed_hints")
+                        {
+                            InstalledHintsReceived?.Invoke(studentId, wireMsg.Apps ?? (IReadOnlyList<InstalledAppInfo>)Array.Empty<InstalledAppInfo>());
+                        }
+                    }
+                }
             }
         }
         catch (OperationCanceledException)

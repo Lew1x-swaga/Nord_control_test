@@ -24,18 +24,18 @@ alwaysApply: true
 
 ---
 
-### Check 2: границы сборок + нет этапа 2
+### Check 2: границы сборок + нет этапа 4/5
 
 `NordControl.Protocol` и `NordControl.Core` не импортируют Win32/WPF. Core не ссылается на Teacher/Student. ClassHub/ClassClient не живут в WPF-проектах.
 
 ```text
-rg -n "System.Windows|HWND|HMONITOR|DXGI|SharpDX|Jpeg|blocklist|AppLocker" src/NordControl.Protocol src/NordControl.Core
+rg -n "System.Windows|HWND|HMONITOR|AppLocker|WFP" src/NordControl.Protocol src/NordControl.Core
 ```
 
-- **PASS** — нет совпадений; Protocol без Win32.
+- **PASS** — нет запрещенных зависимостей; Protocol без Win32.
 - **FAIL** — каждый импорт/вызов: `file:line`.
 
-Запрет для Этапа 2: `set_block_list`, `launch_app`, `Process.Kill`, `AppLocker`, `WFP`, автозапуск, службы, драйверы (Этап 3).
+Запрет для Этапа 3: `AppLocker`, `WFP`, драйверы, постоянные ключи реестра автозапуска, службы Windows, MSI-инсталлятор (Этап 4/5). Политики процессов — строго в RAM.
 
 ---
 

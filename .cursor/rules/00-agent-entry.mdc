@@ -1,14 +1,16 @@
 ---
-description: Точка входа агента Nord Control — что читать, этап 1, n субагентов
+description: Точка входа агента Nord Control — что читать, выбор этапа, n субагентов
 alwaysApply: true
 ---
 
 # Вход
 
-Код: этап 1 (завершен) или этап 2. Источники задач: `docs/AGENT_PLAN.md` (этап 1), `docs/AGENT_PLAN_STAGE2.md` (этап 2). Оркестрация: `docs/subagents.md`.
+Код: этап 1 (завершен), этап 2 (специфицирован) или этап 3 (специфицирован).
+Источники планов: `docs/AGENT_PLAN.md` (этап 1), `docs/AGENT_PLAN_STAGE2.md` (этап 2), `docs/AGENT_PLAN_STAGE3.md` (этап 3).
+Оркестрация: `docs/subagents.md`.
 
-**READ (порядок для Этапа 2):** `AGENTS.md` → `docs/AGENT_PLAN_STAGE2.md` → `docs/requirements.md` (FR-20…23) → `docs/protocol.md` → `docs/invariants.md`. Не читать этап 3 как работу.
+**READ (порядок для Этапа 3):** `AGENTS.md` → `docs/AGENT_PLAN_STAGE3.md` → `docs/requirements.md` (FR-30…34) → `docs/protocol.md` → `docs/invariants.md`.
 
-**n субагентов:** 1 implementer одновременно (`nord-stage2-implementer`). 4 волны. После волны — `nord-stage2-reviewer`. В конце — `nord-stage2-final-reviewer`. Файлы: `.cursor/agents/`.
+**n субагентов:** 1 implementer одновременно (`nord-stage3-implementer`). 4 волны. После волны — `nord-stage3-reviewer`. В конце — `nord-stage3-final-reviewer`. Файлы: `.cursor/agents/`.
 
-**STOP:** launch_app, blocklist, MSI, автозапуск, службы, этап 3. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`.
+**STOP:** MSI installer, Windows Service, автозапуск без сессии, облачная телеметрия, этап 4. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`.

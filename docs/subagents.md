@@ -16,7 +16,14 @@
 | `.cursor/agents/nord-stage2-reviewer.md` | `nord-stage2-reviewer` | сразу после волны этапа 2 |
 | `.cursor/agents/nord-stage2-final-reviewer.md` | `nord-stage2-final-reviewer` | после волны 4, `dotnet test` зелёный |
 
-Для модели: задачи в `AGENT_PLAN.md` и `AGENT_PLAN_STAGE2.md` **последовательные** — их нельзя делать параллельно в одном дереве файлов.
+### Этап 3: Запуск и RAM-блокировка
+| Файл | Имя | Когда звать |
+|---|---|---|
+| `.cursor/agents/nord-stage3-implementer.md` | `nord-stage3-implementer` | одна волна кода этапа 3 |
+| `.cursor/agents/nord-stage3-reviewer.md` | `nord-stage3-reviewer` | сразу после волны этапа 3 |
+| `.cursor/agents/nord-stage3-final-reviewer.md` | `nord-stage3-final-reviewer` | после волны 4, `dotnet test` зелёный |
+
+Для модели: задачи в планах этапов (`AGENT_PLAN.md`, `AGENT_PLAN_STAGE2.md`, `AGENT_PLAN_STAGE3.md`) **последовательные** — их нельзя делать параллельно в одном дереве файлов.
 
 ## Число
 
@@ -25,8 +32,20 @@
 | `concurrent_implementers` | **1** | Один sln, общие типы. Параллельные писатели конфликтуют |
 | `waves_stage1` | **5** | Склеены зависимые Task 1–9 |
 | `waves_stage2` | **4** | Склеены зависимые Task 10–17 |
+| `waves_stage3` | **4** | Склеены зависимые Task 18–25 |
 | `reviewer_per_wave` | **1** | После каждой волны, не после каждого мелкого шага |
 | `final_reviewer` | **1** | Когда `dotnet test` зелёный в конце этапа |
+
+Не путать «волны» с «одновременными агентами». Живой writer всегда один.
+
+## Волны Этапа 3
+
+| Wave | Tasks | Роль | REQUIRED skill | Модель |
+|---|---|---|---|---|
+| 1 | 18–19 | Protocol DTO (`installed_hints`, `launch_app`, `set_block_list`) | `test-driven-development` | standard |
+| 2 | 20–21 | `AppBlocker` (RAM), `AppLauncher`, `InstalledAppsScanner` | `test-driven-development` | standard |
+| 3 | 22–23 | `ClassHub` + `ClassClient` + TeacherPreset | `test-driven-development` | standard |
+| 4 | 24–25 | WPF UI Teacher (пресеты, запуск, блоклист) + LoopbackStage3 | `verification-before-completion` | standard |
 
 Не путать «волны» с «одновременными агентами». Живой writer всегда один.
 

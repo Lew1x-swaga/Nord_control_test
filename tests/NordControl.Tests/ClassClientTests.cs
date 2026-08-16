@@ -11,6 +11,7 @@ using Xunit;
 
 namespace NordControl.Tests;
 
+[Collection("NetworkTests")]
 public class ClassClientTests
 {
     private const int TestUdpPort = 47832;

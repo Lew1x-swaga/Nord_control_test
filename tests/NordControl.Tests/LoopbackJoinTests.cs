@@ -9,6 +9,7 @@ using Xunit;
 
 namespace NordControl.Tests;
 
+[Collection("NetworkTests")]
 public class LoopbackJoinTests
 {
     private const int BaseUdpPort = 47850;
