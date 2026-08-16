@@ -144,6 +144,29 @@ public class AppBlockerTests
     }
 
     [Fact]
+    public void CheckAndEnforce_skips_process_enumeration_when_blocklist_is_empty()
+    {
+        var enumerationCount = 0;
+        using var blocker = new RamAppBlocker(
+            processEnumerator: () =>
+            {
+                enumerationCount++;
+                return new List<ProcessCandidate>();
+            },
+            autoStartWatcher: false
+        );
+
+        // When block list is empty, CheckAndEnforce should not invoke processEnumerator
+        blocker.CheckAndEnforce();
+        Assert.Equal(0, enumerationCount);
+
+        // Once block list has an item, enumeration is performed
+        blocker.SetBlockList(new[] { "discord.exe" });
+        blocker.CheckAndEnforce();
+        Assert.Equal(1, enumerationCount);
+    }
+
+    [Fact]
     public void Dispose_clears_blocklist_and_stops_watcher()
     {
         var blocker = new RamAppBlocker(autoStartWatcher: false);

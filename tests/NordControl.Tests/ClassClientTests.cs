@@ -316,4 +316,19 @@ public class ClassClientTests
         Assert.Equal(SessionStatus.Ended, client.Session.Status);
         Assert.False(client.Session.ShouldHoldPolicies);
     }
+
+    [Fact]
+    public void ResetAddressCache_ClearsCachedTeacherEndpoint()
+    {
+        var client = new ClassClient(pin: "1234");
+
+        // Initially no cached endpoint
+        Assert.Null(client.LastTeacherIp);
+        Assert.Null(client.LastTeacherTcpPort);
+
+        client.ResetAddressCache();
+
+        Assert.Null(client.LastTeacherIp);
+        Assert.Null(client.LastTeacherTcpPort);
+    }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -32,6 +33,9 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
     private string? _lastTeacherIp;
     private int? _lastTeacherTcpPort;
+
+    public string? LastTeacherIp => _lastTeacherIp;
+    public int? LastTeacherTcpPort => _lastTeacherTcpPort;
 
     public int UdpPort => _udpPort;
     public int TcpPort => _tcpPort;
@@ -81,6 +85,15 @@ public class ClassClient : IAsyncDisposable, IDisposable
             }
             StatusChanged?.Invoke(_session);
         };
+
+        try
+        {
+            NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+        }
+        catch
+        {
+            // NetworkChange might not be supported in some restricted environments
+        }
     }
 
     public void SetPin(string pin)
@@ -580,10 +593,30 @@ public class ClassClient : IAsyncDisposable, IDisposable
         }
     }
 
+    private void OnNetworkAddressChanged(object? sender, EventArgs e)
+    {
+        ResetAddressCache();
+    }
+
+    public void ResetAddressCache()
+    {
+        _lastTeacherIp = null;
+        _lastTeacherTcpPort = null;
+    }
+
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        try
+        {
+            NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
+        }
+        catch
+        {
+        }
+
         _appBlocker.Clear();
         _cts?.Cancel();
         _cts?.Dispose();

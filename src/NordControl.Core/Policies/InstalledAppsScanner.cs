@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
+using NordControl.Core.Helpers;
 using NordControl.Protocol;
 
 namespace NordControl.Core.Policies;
@@ -58,7 +59,7 @@ public class InstalledAppsScanner
                             continue;
 
                         // Use the .lnk path as launch target if resolved, with an assumed .exe or fallback name
-                        var exeName = name + ".exe";
+                        var exeName = ProcessNameHelper.Normalize(name);
                         list.Add(new InstalledAppInfo
                         {
                             Name = name,
@@ -122,9 +123,9 @@ public class InstalledAppsScanner
                                     iconPath = iconPath.Substring(0, commaIndex).Trim();
                                 }
 
-                                if (iconPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(iconPath))
+                                if (ProcessNameHelper.IsExe(iconPath) && File.Exists(iconPath))
                                 {
-                                    exeName = Path.GetFileName(iconPath);
+                                    exeName = ProcessNameHelper.Normalize(iconPath);
                                     launchTarget = iconPath;
                                 }
                             }
@@ -136,7 +137,7 @@ public class InstalledAppsScanner
                                     var mainExe = Directory.EnumerateFiles(installLocation, "*.exe", SearchOption.TopDirectoryOnly).FirstOrDefault();
                                     if (mainExe != null)
                                     {
-                                        exeName = Path.GetFileName(mainExe);
+                                        exeName = ProcessNameHelper.Normalize(mainExe);
                                         launchTarget = mainExe;
                                     }
                                 }
@@ -145,7 +146,7 @@ public class InstalledAppsScanner
 
                             if (string.IsNullOrEmpty(exeName))
                             {
-                                exeName = displayName.Trim() + ".exe";
+                                exeName = ProcessNameHelper.Normalize(displayName);
                             }
 
                             list.Add(new InstalledAppInfo
@@ -179,14 +180,13 @@ public class InstalledAppsScanner
                 continue;
             }
 
-            var exe = app.Exe.Trim();
-            if (!exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            var exeNameOnly = ProcessNameHelper.Normalize(app.Exe);
+            if (string.IsNullOrEmpty(exeNameOnly))
             {
-                exe += ".exe";
+                continue;
             }
 
             // Exclude uninstallers
-            var exeNameOnly = Path.GetFileName(exe);
             if (exeNameOnly.StartsWith("unins", StringComparison.OrdinalIgnoreCase) ||
                 exeNameOnly.StartsWith("uninstall", StringComparison.OrdinalIgnoreCase) ||
                 app.Name.StartsWith("Uninstall", StringComparison.OrdinalIgnoreCase))

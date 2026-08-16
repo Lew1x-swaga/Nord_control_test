@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using NordControl.Core.Helpers;
 
 namespace NordControl.Core.Policies;
 
@@ -106,12 +107,14 @@ public class RamAppBlocker : IAppBlocker
 
     public void CheckAndEnforce()
     {
+        HashSet<string> blockListSnapshot;
         lock (_lock)
         {
             if (_blockList.Count == 0)
             {
                 return;
             }
+            blockListSnapshot = new HashSet<string>(_blockList, StringComparer.OrdinalIgnoreCase);
         }
 
         try
@@ -125,13 +128,7 @@ public class RamAppBlocker : IAppBlocker
                     continue;
                 }
 
-                bool shouldKill;
-                lock (_lock)
-                {
-                    shouldKill = _blockList.Contains(normalized);
-                }
-
-                if (shouldKill)
+                if (blockListSnapshot.Contains(normalized))
                 {
                     try
                     {
@@ -156,7 +153,17 @@ public class RamAppBlocker : IAppBlocker
         {
             try
             {
-                CheckAndEnforce();
+                bool hasBlockedItems;
+                lock (_lock)
+                {
+                    hasBlockedItems = _blockList.Count > 0;
+                }
+
+                if (hasBlockedItems)
+                {
+                    CheckAndEnforce();
+                }
+
                 await Task.Delay(_checkIntervalMs, ct);
             }
             catch (OperationCanceledException)
@@ -185,18 +192,7 @@ public class RamAppBlocker : IAppBlocker
         return false;
     }
 
-    public static string NormalizeExeName(string raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return string.Empty;
-
-        var name = Path.GetFileName(raw.Trim()).ToLowerInvariant();
-        if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            name += ".exe";
-        }
-        return name;
-    }
+    public static string NormalizeExeName(string raw) => ProcessNameHelper.Normalize(raw);
 
     private static IEnumerable<ProcessCandidate> DefaultProcessEnumerator()
     {
@@ -215,17 +211,17 @@ public class RamAppBlocker : IAppBlocker
         {
             try
             {
-                string exeName;
+                string rawName;
                 try
                 {
-                    exeName = Path.GetFileName(p.MainModule?.FileName ?? p.ProcessName + ".exe");
+                    rawName = p.MainModule?.FileName ?? p.ProcessName;
                 }
                 catch
                 {
-                    exeName = p.ProcessName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                        ? p.ProcessName
-                        : p.ProcessName + ".exe";
+                    rawName = p.ProcessName;
                 }
+
+                var exeName = ProcessNameHelper.Normalize(rawName);
 
                 result.Add(new ProcessCandidate(
                     Pid: p.Id,

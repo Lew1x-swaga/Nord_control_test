@@ -17,6 +17,8 @@ public class GdiScreenCapturer : IScreenCapturer
         .GetImageEncoders()
         .FirstOrDefault(c => c.FormatID == ImageFormat.Jpeg.Guid);
 
+    private readonly MemoryStream _compressionStream = new(256 * 1024);
+    private readonly object _streamLock = new();
     private bool _isDisposed;
 
     public Task<JpegFrame?> CaptureFrameAsync(int maxDimension = 1280, int quality = 70, CancellationToken ct = default)
@@ -41,7 +43,7 @@ public class GdiScreenCapturer : IScreenCapturer
                     g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
                 }
 
-                if (ct.IsCancellationRequested)
+                if (ct.IsCancellationRequested || _isDisposed)
                     return null;
 
                 int targetWidth = srcWidth;
@@ -74,21 +76,32 @@ public class GdiScreenCapturer : IScreenCapturer
 
                 try
                 {
-                    using var ms = new MemoryStream();
-                    if (JpegEncoder != null)
+                    byte[] jpegBytes;
+                    lock (_streamLock)
                     {
-                        using var encoderParams = new EncoderParameters(1);
-                        encoderParams.Param[0] = new EncoderParameter(Encoder.Quality, (long)Math.Clamp(quality, 10, 100));
-                        targetBitmap.Save(ms, JpegEncoder, encoderParams);
-                    }
-                    else
-                    {
-                        targetBitmap.Save(ms, ImageFormat.Jpeg);
+                        if (_isDisposed)
+                            return null;
+
+                        _compressionStream.Position = 0;
+                        _compressionStream.SetLength(0);
+
+                        if (JpegEncoder != null)
+                        {
+                            using var encoderParams = new EncoderParameters(1);
+                            encoderParams.Param[0] = new EncoderParameter(Encoder.Quality, (long)Math.Clamp(quality, 10, 100));
+                            targetBitmap.Save(_compressionStream, JpegEncoder, encoderParams);
+                        }
+                        else
+                        {
+                            targetBitmap.Save(_compressionStream, ImageFormat.Jpeg);
+                        }
+
+                        var streamLength = (int)_compressionStream.Length;
+                        jpegBytes = new byte[streamLength];
+                        Buffer.BlockCopy(_compressionStream.GetBuffer(), 0, jpegBytes, 0, streamLength);
                     }
 
-                    var jpegBytes = ms.ToArray();
                     var timestampMs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
                     return (JpegFrame?)new JpegFrame((uint)targetWidth, (uint)targetHeight, timestampMs, jpegBytes);
                 }
                 finally
@@ -108,6 +121,11 @@ public class GdiScreenCapturer : IScreenCapturer
 
     public void Dispose()
     {
+        if (_isDisposed) return;
         _isDisposed = true;
+        lock (_streamLock)
+        {
+            _compressionStream.Dispose();
+        }
     }
 }

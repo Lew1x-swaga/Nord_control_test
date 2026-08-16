@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using NordControl.Core;
+using NordControl.Core.Helpers;
 using NordControl.Core.Policies;
 using NordControl.Protocol;
 
@@ -272,13 +273,16 @@ public partial class MainWindow : Window
 
     private void OnScreenFrameReceived(string studentId, JpegFrame frame)
     {
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (studentId != _hub.SelectedStudentId)
-                return;
+        if (studentId != _hub.SelectedStudentId || frame.Data == null || frame.Data.Length == 0)
+            return;
 
+        Task.Run(() =>
+        {
             try
             {
+                if (studentId != _hub.SelectedStudentId)
+                    return;
+
                 using var ms = new MemoryStream(frame.Data);
                 var bitmap = new BitmapImage();
                 bitmap.BeginInit();
@@ -287,8 +291,14 @@ public partial class MainWindow : Window
                 bitmap.EndInit();
                 bitmap.Freeze();
 
-                ScreenImage.Source = bitmap;
-                WaitingForFrameTextBlock.Visibility = Visibility.Collapsed;
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (studentId == _hub.SelectedStudentId)
+                    {
+                        ScreenImage.Source = bitmap;
+                        WaitingForFrameTextBlock.Visibility = Visibility.Collapsed;
+                    }
+                });
             }
             catch
             {
@@ -430,10 +440,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            exe += ".exe";
-        }
+        exe = ProcessNameHelper.Normalize(exe);
 
         _quickApps.Add(new InstalledAppInfo
         {
@@ -504,15 +511,10 @@ public partial class MainWindow : Window
 
     private void AddBlockedApp_Click(object sender, RoutedEventArgs e)
     {
-        var exe = NewBlockedExeTextBox.Text.Trim();
+        var exe = ProcessNameHelper.Normalize(NewBlockedExeTextBox.Text);
         if (string.IsNullOrWhiteSpace(exe))
         {
             return;
-        }
-
-        if (!exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-        {
-            exe += ".exe";
         }
 
         if (!_blockedApps.Any(a => string.Equals(a, exe, StringComparison.OrdinalIgnoreCase)))

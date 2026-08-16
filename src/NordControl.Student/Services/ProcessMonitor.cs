@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using NordControl.Core.Helpers;
 using NordControl.Protocol;
 
 namespace NordControl.Student.Services;
@@ -37,17 +37,17 @@ public class ProcessMonitor
                     if (string.IsNullOrWhiteSpace(title))
                         continue;
 
-                    string exeName;
+                    string rawName;
                     try
                     {
-                        exeName = Path.GetFileName(p.MainModule?.FileName ?? p.ProcessName + ".exe");
+                        rawName = p.MainModule?.FileName ?? p.ProcessName;
                     }
                     catch
                     {
-                        exeName = p.ProcessName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                            ? p.ProcessName
-                            : p.ProcessName + ".exe";
+                        rawName = p.ProcessName;
                     }
+
+                    var exeName = ProcessNameHelper.Normalize(rawName);
 
                     items.Add(new ProcessItemInfo
                     {
@@ -95,16 +95,18 @@ public class ProcessMonitor
                 return null;
 
             using var activeProc = Process.GetProcessById((int)pid);
+            string rawName;
             try
             {
-                return Path.GetFileName(activeProc.MainModule?.FileName ?? activeProc.ProcessName + ".exe");
+                rawName = activeProc.MainModule?.FileName ?? activeProc.ProcessName;
             }
             catch
             {
-                return activeProc.ProcessName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                    ? activeProc.ProcessName
-                    : activeProc.ProcessName + ".exe";
+                rawName = activeProc.ProcessName;
             }
+
+            var exe = ProcessNameHelper.Normalize(rawName);
+            return string.IsNullOrEmpty(exe) ? null : exe;
         }
         catch
         {
