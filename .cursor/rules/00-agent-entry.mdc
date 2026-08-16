@@ -1,0 +1,16 @@
+---
+description: Точка входа агента Nord Control — что читать, этап 1, n субагентов
+alwaysApply: true
+---
+
+# Вход
+
+Код: только этап 1. Источник задач: `docs/AGENT_PLAN.md`. Оркестрация: `docs/subagents.md`.
+
+**READ (порядок):** `AGENTS.md` → `docs/AGENT_PLAN.md` → `docs/requirements.md` (FR-01…13) → `docs/protocol.md` → `docs/invariants.md`. Не читать этап 2/3 как работу.
+
+**n субагентов:** 1 implementer одновременно (`nord-stage1-implementer`). 5 волн. После волны — `nord-stage1-reviewer`. В конце — `nord-stage1-final-reviewer`. Файлы: `.cursor/agents/`.
+
+**STOP:** DXGI, JPEG, process list, launch, blocklist, MSI, автозапуск, этап 2. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`; не коммитить при BLOCKED.
+
+Skill: `.cursor/skills/executing-nord-stage1/SKILL.md`

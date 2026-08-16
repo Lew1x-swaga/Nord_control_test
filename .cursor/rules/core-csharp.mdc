@@ -1,0 +1,22 @@
+---
+description: Core — стейт-машина, ClassHub/ClassClient без WPF
+globs: src/NordControl.Core/**/*.cs
+alwaysApply: false
+---
+
+# Core
+
+Нет ссылок на WPF. Хаб и клиент тестируются из `net8.0` xUnit.
+
+`StudentSession`: якорь `lastRecv`. Статусы `Idle|Online|Reconnecting|Ended`. `ShouldHoldPolicies = Online || Reconnecting`. Нет `Environment.Exit`.
+
+Порты — параметры конструктора, дефолт 47820/47821. Тесты: 47830/47831.
+
+```csharp
+// BAD: new ClassHub() всегда 47821 в unit-тесте рядом с ручным Teacher
+// GOOD: new ClassHub(udpPort: 47830, tcpPort: 47831)
+```
+
+Hub: PIN в Join, не в UDP. Повторный `session_token` не плодит ученика. `StopClassAsync` шлёт `session_end`.
+
+Client: probe на `255.255.255.255` и `127.0.0.1`. `EnableBroadcast=true`. Нет пинга интернета.

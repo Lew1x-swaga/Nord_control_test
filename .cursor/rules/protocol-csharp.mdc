@@ -1,0 +1,22 @@
+---
+description: C# Protocol — кадры, JSON, UDP без Win32 и без PIN в эфире
+globs: src/NordControl.Protocol/**/*.cs
+alwaysApply: false
+---
+
+# Protocol
+
+Namespace `NordControl.Protocol`. Нет `System.Windows`, `HWND`, UI.
+
+Кадр TCP: big-endian `uint32 length` (= 1+payload), `uint8 type`, payload. type 1 = UTF-8 JSON. Макс payload 4 MiB.
+
+JSON: `JsonNamingPolicy.SnakeCaseLower`, `WhenWritingNull`. Поле `type` snake_case.
+
+UDP: `NORD1|probe|v=1` и `NORD1|announce|v=1|name=...|ip=...|tcp=...`. **Не** включать `pin=`.
+
+```csharp
+// BAD
+announce += "|pin=" + pin;
+// GOOD
+UdpPackets.Announce(name, ip, tcpPort); // без pin
+```

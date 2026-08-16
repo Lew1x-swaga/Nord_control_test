@@ -1,0 +1,19 @@
+---
+description: Fail-open, LAN-only, видимый надзор — нельзя нарушать в любом коде
+alwaysApply: true
+---
+
+# Инварианты
+
+Политики только в RAM агента. Нет AppLocker, WFP, hosts, автозапуска, служб, драйверов.
+
+```csharp
+// BAD: Environment.Exit в сокете; ping 8.8.8.8; PIN в UDP
+// GOOD: lastRecv; 10с stale; 120с Ended; session_end → сразу fail-open
+```
+
+Интернет не условие жизни. Обрыв LAN ≠ закрыть exe. Явный уход учителя ≠ ждать 120 с.
+
+Плашка+трей. Не маскировать процесс. Не кейлоггер. Не писать экран на диск.
+
+`NordControl.Protocol` без Win32. Запрет (этап 3) — имя exe, не трогать `NordControl.*`.

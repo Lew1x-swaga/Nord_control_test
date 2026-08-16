@@ -1,0 +1,20 @@
+---
+description: xUnit — TDD для Protocol/Core, loopback без живого UI
+globs: tests/**/*.cs
+alwaysApply: false
+---
+
+# Tests
+
+Для Protocol и `StudentSession`: сначала падающий тест, потом код. Смотреть RED, потом GREEN.
+
+`LoopbackJoinTests` — только Core, порты 47830/47831, PIN `1234` ок / `9999` reject / `StopClassAsync` → Ended.
+
+Не мокать «есть интернет». Не skip-ать тест из‑за занятого 47821 — смени порт.
+
+```csharp
+// BAD: [Fact(Skip="no network")]
+// GOOD: ClassHub(47830, 47831) + ClassClient(..., 47830, 47831)
+```
+
+Команда: `dotnet test tests/NordControl.Tests --nologo`

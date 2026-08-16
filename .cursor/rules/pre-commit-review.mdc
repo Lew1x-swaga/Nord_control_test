@@ -1,0 +1,104 @@
+---
+description: Pre-commit review before any git commit — dotnet test, Protocol/Core boundaries, ProtocolConstants, fail-open, no stage-2
+alwaysApply: true
+---
+
+# Pre-commit review (этап 1)
+
+Запускай **только** если пользователь просит commit / «закоммить» / pre-commit review. Иначе не гоняй проверки.
+
+Аудит `src/` против инвариантов. Короткий PASS/FAIL, не простыня.
+
+**Нельзя:** править код (пока не попросили починить); commit / push / format.
+
+Фокус — diff (`git diff --name-only HEAD` и staged). Полный прогон — где указано.
+
+---
+
+### Check 1: `dotnet test`
+
+Из корня: `dotnet test tests/NordControl.Tests --nologo`
+
+- **PASS** — exit 0.
+- **FAIL** — до 5 падений (`Class.Method` + assertion); иначе `+N more`.
+
+---
+
+### Check 2: границы сборок + нет этапа 2
+
+`NordControl.Protocol` и `NordControl.Core` не импортируют Win32/WPF. Core не ссылается на Teacher/Student. ClassHub/ClassClient не живут в WPF-проектах.
+
+```text
+rg -n "System.Windows|HWND|HMONITOR|DXGI|SharpDX|Jpeg|blocklist|AppLocker" src/NordControl.Protocol src/NordControl.Core
+```
+
+Запрет в любом `src/` на этапе 1: DXGI, JPEG-захват, process list, launch, blocklist, автозапуск, службы.
+
+- **PASS** — нет совпадений; Protocol без Win32.
+- **FAIL** — каждый импорт/вызов: `file:line`.
+
+---
+
+### Check 3: константы только из `ProtocolConstants`
+
+Порты, PIN-диапазон, heartbeat/stale/reconnect, magic `NORD1`, max frame — из `src/NordControl.Protocol/ProtocolConstants.cs`, не литералы в телах функций Core/UI.
+
+Флаг: `47820`, `47821`, `3000`, `10000`, `120000`, `1000`/`9999` как PIN, `"NORD1"` вне констант.
+
+OK: `0`/`1`/`-1`; порты тестов `47830`/`47831` в `tests/`; сами значения внутри `ProtocolConstants.cs`.
+
+- **PASS** — логика берёт константы модуля.
+- **FAIL** — `file:line — value — должно быть ProtocolConstants`.
+
+---
+
+### Check 4: fail-open, LAN-only
+
+Сокет/heartbeat не убивают процесс. Явный `session_end` → fail-open сразу. Нет интернета как health-check. PIN не в UDP.
+
+```text
+rg -n "Environment.Exit|8\\.8\\.8\\.8|Ping\\(|HttpClient" src/
+rg -n "pin=" src/NordControl.Protocol src/NordControl.Core
+```
+
+- **PASS** — `lastRecv`; 10 с stale; 120 с Ended; Exit/ping/HTTP нет; PIN не в announce.
+- **FAIL** — `file:line — функция — нарушенный инвариант`.
+
+---
+
+### Check 5: логика ≠ I/O пользователя
+
+Protocol/Core возвращают данные. Stdout/MessageBox/файл/трей — только Teacher/Student.
+
+```text
+rg -n "Console\\.(Write|WriteLine)|MessageBox\\." src/NordControl.Protocol src/NordControl.Core
+```
+
+Запрет: кейлоггер, запись экрана на диск, маскировка процесса.
+
+- **PASS** — нет print/UI в Protocol/Core.
+- **FAIL** — каждый `file:line`.
+
+---
+
+### Итог (этот формат)
+
+```
+## Pre-commit review
+
+| Check                                      | Result |
+|--------------------------------------------|--------|
+| 1. dotnet test NordControl.Tests           | PASS/FAIL |
+| 2. Protocol/Core boundaries; no stage 2    | PASS/FAIL |
+| 3. no hardcoded ProtocolConstants literals | PASS/FAIL |
+| 4. fail-open / LAN-only / PIN not in UDP   | PASS/FAIL |
+| 5. logic ≠ UI I/O (WPF owns output)        | PASS/FAIL |
+
+**Verdict:** READY TO COMMIT / BLOCKED
+
+**Blockers:** (none | bullet list, one line each)
+```
+
+READY TO COMMIT — все пять PASS. BLOCKED — любой FAIL; только блокеры.
+
+Ответ ≤ ~25 строк. Не пересказывать AGENTS.md.

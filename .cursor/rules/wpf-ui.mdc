@@ -1,0 +1,20 @@
+---
+description: WPF учитель/ученик — русский UI, не блокировать Dispatcher
+globs: src/NordControl.Teacher/**/*.cs,src/NordControl.Teacher/**/*.xaml,src/NordControl.Student/**/*.cs,src/NordControl.Student/**/*.xaml
+alwaysApply: false
+---
+
+# WPF
+
+Строки UI — русские, как в `docs/ui.md`. Сокеты не на Dispatcher.
+
+Учитель: крупный PIN, «Начать класс» / «Завершить класс», список слева, справа «Экран — этап 2». Closing → `StopClassAsync`.
+
+Ученик: поле PIN, опционально IP. После Join закрытие только с PIN. `UseWindowsForms=true`, `NotifyIcon`. `Topmost` когда не Idle.
+
+```csharp
+// BAD: hub.StartClass(...).Wait() в клике кнопки
+// GOOD: await hub.StartClass(...); статус через Dispatcher.Invoke
+```
+
+Не ходить в интернет «проверить сеть» перед стартом класса.
