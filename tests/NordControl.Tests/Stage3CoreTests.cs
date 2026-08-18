@@ -13,6 +13,8 @@ namespace NordControl.Tests;
 
 public class FakeAppBlocker : IAppBlocker
 {
+    public event Action<string>? ProcessKilled;
+    public void SimulateKill(string exe) => ProcessKilled?.Invoke(exe);
     public List<string> CurrentBlockList { get; } = new();
     public int ClearCount { get; private set; }
     public int SetBlockListCount { get; private set; }
@@ -444,6 +446,63 @@ public class Stage3CoreTests
 
             Assert.True(fakeBlocker.ClearCount > initialClearCount, "Blocker.Clear() must be called on session_end");
             Assert.Empty(fakeBlocker.CurrentBlockList);
+        }
+        finally
+        {
+            cts.Cancel();
+            try { await runTask; } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task ClassHub_StopClassAsync_BroadcastsEmptyBlockListFirst()
+    {
+        var (udp, tcp) = TestPorts.NextPair();
+        await using var hub = new ClassHub(udp, tcp);
+        await hub.StartClass("Class-StopEmpty", "8888", CancellationToken.None);
+
+        var fakeBlocker = new FakeAppBlocker();
+        await using var client = new ClassClient(
+            pin: "8888",
+            udpPort: udp,
+            tcpPort: tcp,
+            manualTeacherIp: "127.0.0.1",
+            appBlocker: fakeBlocker
+        );
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var runTask = client.RunAsync(cts.Token);
+
+        try
+        {
+            var timeoutAt = DateTime.UtcNow.AddSeconds(4);
+            while (client.Session.Status != SessionStatus.Online && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(50);
+            }
+            Assert.Equal(SessionStatus.Online, client.Session.Status);
+
+            var studentId = client.Session.StudentId!;
+            await hub.SendBlockListAsync(studentId, new[] { "app.exe" });
+
+            var checkTimeout = DateTime.UtcNow.AddSeconds(3);
+            while (fakeBlocker.CurrentBlockList.Count == 0 && DateTime.UtcNow < checkTimeout)
+            {
+                await Task.Delay(50);
+            }
+            Assert.Single(fakeBlocker.CurrentBlockList);
+
+            // Stop class
+            await hub.StopClassAsync();
+
+            var stopWaitTimeout = DateTime.UtcNow.AddSeconds(3);
+            while (client.Session.Status != SessionStatus.Idle && DateTime.UtcNow < stopWaitTimeout)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Empty(fakeBlocker.CurrentBlockList);
+            Assert.Equal(SessionStatus.Idle, client.Session.Status);
         }
         finally
         {

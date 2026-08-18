@@ -149,7 +149,9 @@ public partial class MainWindow : Window
             ProcessListCallback = () => _processMonitor.CollectProcessList(ProcessMonitor.MaxItems),
             InstalledAppsProvider = () => _processMonitor.CollectWindowedApps(_appsScanner.ScanInstalledApps())
         };
+        _client.AppBlocker.ProcessKilled += OnProcessKilled;
         _client.StatusChanged += OnClientStatusChanged;
+        _client.StreamStateChanged += OnStreamStateChanged;
         _client.Error += OnClientError;
 
         var token = _clientCts.Token;
@@ -197,6 +199,11 @@ public partial class MainWindow : Window
                 case SessionStatus.Ended:
                 case SessionStatus.Idle:
                 default:
+                    ScreenWatcherBannerWindow.CloseBanner();
+                    if (_hasJoinedClass)
+                    {
+                        ToastWindow.ShowToast("Урок окончен", "Ограничения сняты", isAlert: false, soundSubject: "lesson_ended");
+                    }
                     Topmost = false;
                     StatusCaptionTextBlock.Text = "Ожидание";
                     StatusHeaderTextBlock.Text = "Nord Control — ожидание класса";
@@ -219,6 +226,16 @@ public partial class MainWindow : Window
                     break;
             }
         });
+    }
+
+    private void OnStreamStateChanged(bool isStreaming)
+    {
+        ScreenWatcherBannerWindow.SetStreamingState(isStreaming);
+    }
+
+    private void OnProcessKilled(string exeName)
+    {
+        ToastWindow.ShowToast("Ограничение", $"Учитель заблокировал: {exeName}", isAlert: true, soundSubject: exeName);
     }
 
     private void OnClientError(string errorMessage)
@@ -322,6 +339,7 @@ public partial class MainWindow : Window
 
     private void DisconnectFromClass()
     {
+        ScreenWatcherBannerWindow.CloseBanner();
         _clientCts?.Cancel();
         _clientCts?.Dispose();
         _clientCts = null;
@@ -353,6 +371,7 @@ public partial class MainWindow : Window
 
     private void ShutdownAgent()
     {
+        ScreenWatcherBannerWindow.CloseBanner();
         _notifyIcon?.Dispose();
         _clientCts?.Cancel();
         _client?.Dispose();

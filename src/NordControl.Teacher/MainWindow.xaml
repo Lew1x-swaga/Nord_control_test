@@ -274,7 +274,8 @@
                                         </Button>
                                     </Grid>
                                     <ListView x:Name="ProcessesListView" Grid.Row="1"
-                                              ItemContainerStyle="{StaticResource Style.ProcessRow}">
+                                              ItemContainerStyle="{StaticResource Style.ProcessRow}"
+                                              PreviewKeyDown="ProcessesListView_PreviewKeyDown">
                                         <ListView.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem Header="Закрыть и запретить до конца урока" Click="BlockProcessMenuItem_Click"/>
@@ -342,7 +343,8 @@
                                                    Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <ListBox x:Name="QuickAppsListBox" Grid.Row="1" Margin="0,0,0,8"
-                                             ItemContainerStyle="{StaticResource Style.CardListItem}">
+                                             ItemContainerStyle="{StaticResource Style.CardListItem}"
+                                             PreviewKeyDown="QuickAppsListBox_PreviewKeyDown">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid>
@@ -409,7 +411,8 @@
                                         <TextBlock Text="Только в памяти агента · без AppLocker" Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <ListBox x:Name="BlockedAppsListBox" Grid.Row="1" Margin="0,0,0,8"
-                                             ItemContainerStyle="{StaticResource Style.CardListItem}">
+                                             ItemContainerStyle="{StaticResource Style.CardListItem}"
+                                             PreviewKeyDown="BlockedAppsListBox_PreviewKeyDown">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
                                                 <StackPanel Orientation="Horizontal">
@@ -480,7 +483,8 @@
                                         <Button Style="{StaticResource Style.SoftDangerButton}" Click="AddHintToBlockList_Click" Content="+ В блоклист"/>
                                     </StackPanel>
                                 </Grid>
-                                <ListView x:Name="HintsListView" Grid.Row="1">
+                                <ListView x:Name="HintsListView" Grid.Row="1"
+                                          PreviewKeyDown="HintsListView_PreviewKeyDown">
                                     <ListView.View>
                                         <GridView>
                                             <GridViewColumn Header="Название" Width="200" DisplayMemberBinding="{Binding Name}"/>
@@ -527,6 +531,39 @@
                     <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.FullscreenExit}" Fill="#E2E8F0"/>
                 </Button>
             </Grid>
+        </Border>
+        <!-- Conflict dialog overlay -->
+        <Border x:Name="ConflictDialogOverlay" Grid.Row="0" Grid.RowSpan="3"
+                Background="#800F172A" Visibility="Collapsed" Panel.ZIndex="30">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="400" Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
+                    CornerRadius="14" Padding="20">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="270" Opacity="0.25" Color="#0F172A"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="ConflictDialogTitle" Text="Конфликт действия"
+                               Style="{StaticResource Text.Subtitle}" Margin="0,0,0,6"/>
+                    <TextBlock x:Name="ConflictDialogMessage" Text=""
+                               FontSize="13" Foreground="{StaticResource Brush.TextSecondary}"
+                               TextWrapping="Wrap" Margin="0,0,0,18"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="ConflictCancelButton" Grid.Column="0"
+                                Style="{StaticResource Style.IconButton}" Height="34" MinHeight="34"
+                                Background="{StaticResource Brush.SurfaceMuted}"
+                                Click="ConflictCancelButton_Click" Content="Отмена"/>
+                        <Button x:Name="ConflictConfirmButton" Grid.Column="2"
+                                Style="{StaticResource Style.AccentButton}" Height="34" MinHeight="34"
+                                Click="ConflictConfirmButton_Click" Content="Подтвердить"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </Window>

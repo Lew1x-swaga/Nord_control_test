@@ -157,4 +157,55 @@ public class StudentSessionTests
         session.OnTcpDropped();
         Assert.Equal(SessionStatus.Ended, session.Status);
     }
+
+    [Fact]
+    public void StreamStateChanged_fires_when_streaming_starts_and_stops()
+    {
+        var clock = new FakeClock();
+        var session = new StudentSession();
+        var streamEvents = new System.Collections.Generic.List<bool>();
+        session.StreamStateChanged += isStreaming => streamEvents.Add(isStreaming);
+
+        session.OnJoinOk("student-1", "token-1", clock.UtcNow);
+        Assert.Empty(streamEvents);
+
+        // Teacher starts viewing screen
+        session.StreamEnabled = true;
+        Assert.Single(streamEvents);
+        Assert.True(streamEvents[0]);
+
+        // Teacher switches away / stops viewing
+        session.StreamEnabled = false;
+        Assert.Equal(2, streamEvents.Count);
+        Assert.False(streamEvents[1]);
+    }
+
+    [Fact]
+    public void StreamStateChanged_fires_false_when_session_drops_or_ends()
+    {
+        var clock = new FakeClock();
+        var session = new StudentSession();
+        var streamEvents = new System.Collections.Generic.List<bool>();
+        session.StreamStateChanged += isStreaming => streamEvents.Add(isStreaming);
+
+        session.OnJoinOk("student-1", "token-1", clock.UtcNow);
+        session.StreamEnabled = true;
+        Assert.Single(streamEvents);
+        Assert.True(streamEvents[0]);
+
+        // Drop TCP connection
+        session.OnTcpDropped();
+        Assert.Equal(2, streamEvents.Count);
+        Assert.False(streamEvents[1]);
+
+        // Reconnect restores stream if enabled
+        session.OnMessageReceived(clock.UtcNow);
+        Assert.Equal(3, streamEvents.Count);
+        Assert.True(streamEvents[2]);
+
+        // End session
+        session.OnSessionEnd();
+        Assert.Equal(4, streamEvents.Count);
+        Assert.False(streamEvents[3]);
+    }
 }

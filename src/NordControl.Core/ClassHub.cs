@@ -329,6 +329,39 @@ public class ClassHub : IAsyncDisposable
             return;
         }
 
+        var activeConns = _activeConnections.Values.ToList();
+
+        // 1. First, send empty set_block_list to release all student RAM restrictions
+        var emptyBlockMsg = new WireMessage
+        {
+            V = ProtocolConstants.Version,
+            Type = "set_block_list",
+            ExeNames = new List<string>()
+        };
+        var emptyBlockPayload = WireMessage.SerializeUtf8(emptyBlockMsg);
+
+        foreach (var conn in activeConns)
+        {
+            try
+            {
+                if (await conn.SendLock.WaitAsync(TimeSpan.FromMilliseconds(500)))
+                {
+                    try
+                    {
+                        await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, emptyBlockPayload, CancellationToken.None);
+                    }
+                    finally
+                    {
+                        conn.SendLock.Release();
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore transient send errors during shutdown
+            }
+        }
+
         CleanupListeners();
 
         var sessionEnd = new WireMessage
@@ -339,7 +372,6 @@ public class ClassHub : IAsyncDisposable
         };
         var endPayload = WireMessage.SerializeUtf8(sessionEnd);
 
-        var activeConns = _activeConnections.Values.ToList();
         foreach (var conn in activeConns)
         {
             try

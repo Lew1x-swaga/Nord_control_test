@@ -303,10 +303,18 @@ public class ClassHubTests
         var joinOkFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
         Assert.NotNull(joinOkFrame);
 
-        // Teacher stops class
+        // Teacher stops class: sends empty set_block_list then session_end
         await hub.StopClassAsync();
 
-        // Client should receive session_end frame
+        // 1. First frame should be empty set_block_list
+        var blockFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
+        Assert.NotNull(blockFrame);
+        var blockMsg = WireMessage.Deserialize(blockFrame!.Value.Payload);
+        Assert.NotNull(blockMsg);
+        Assert.Equal("set_block_list", blockMsg!.Type);
+        Assert.Empty(blockMsg.ExeNames ?? new List<string>());
+
+        // 2. Second frame should be session_end
         var endFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
         Assert.NotNull(endFrame);
         var endMsg = WireMessage.Deserialize(endFrame!.Value.Payload);

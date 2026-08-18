@@ -55,6 +55,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
     public Func<WireMessage>? ProcessListCallback { get; set; }
 
     public event Action<StudentSession>? StatusChanged;
+    public event Action<bool>? StreamStateChanged;
     public event Action<string>? Error;
 
     public ClassClient(
@@ -87,6 +88,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
             }
             StatusChanged?.Invoke(_session);
         };
+        _session.StreamStateChanged += isStreaming => StreamStateChanged?.Invoke(isStreaming);
 
         try
         {

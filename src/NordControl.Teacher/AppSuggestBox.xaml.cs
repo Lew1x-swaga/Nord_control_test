@@ -78,6 +78,7 @@ public partial class AppSuggestBox : UserControl
     }
 
     public event Action<InstalledAppInfo>? SuggestionChosen;
+    public event Action<InstalledAppInfo?>? Submitted;
 
     public void SetCatalog(IReadOnlyList<InstalledAppInfo> catalog)
     {
@@ -131,10 +132,26 @@ public partial class AppSuggestBox : UserControl
             SuggestPopup.IsOpen = false;
             e.Handled = true;
         }
-        else if (e.Key == Key.Enter && SuggestPopup.IsOpen && SuggestListBox.SelectedItem is InstalledAppInfo selected)
+        else if (e.Key == Key.Enter)
         {
-            ApplySuggestion(selected);
             e.Handled = true;
+            if (SuggestPopup.IsOpen && SuggestListBox.SelectedItem is InstalledAppInfo selected)
+            {
+                ApplySuggestion(selected);
+                Submitted?.Invoke(selected);
+            }
+            else if (SelectedApp != null)
+            {
+                SuggestPopup.IsOpen = false;
+                Submitted?.Invoke(SelectedApp);
+            }
+            else if (!string.IsNullOrWhiteSpace(QueryTextBox.Text))
+            {
+                var text = QueryTextBox.Text.Trim();
+                var app = new InstalledAppInfo { Name = text, Exe = text };
+                SuggestPopup.IsOpen = false;
+                Submitted?.Invoke(app);
+            }
         }
     }
 
@@ -143,6 +160,7 @@ public partial class AppSuggestBox : UserControl
         if (e.Key == Key.Enter && SuggestListBox.SelectedItem is InstalledAppInfo selected)
         {
             ApplySuggestion(selected);
+            Submitted?.Invoke(selected);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)

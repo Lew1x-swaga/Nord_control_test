@@ -167,6 +167,47 @@ public class AppBlockerTests
     }
 
     [Fact]
+    public void ProcessKilled_event_fires_when_process_is_terminated()
+    {
+        var killedEvents = new List<string>();
+        var candidates = new List<ProcessCandidate>
+        {
+            new(Pid: 301, ExeName: "notepad.exe", KillAction: () => { }),
+            new(Pid: 302, ExeName: "calc.exe", KillAction: () => { })
+        };
+
+        using var blocker = new RamAppBlocker(processEnumerator: () => candidates, autoStartWatcher: false);
+        blocker.ProcessKilled += exe => killedEvents.Add(exe);
+
+        blocker.SetBlockList(new[] { "notepad.exe" });
+        blocker.CheckAndEnforce();
+
+        Assert.Single(killedEvents);
+        Assert.Equal("notepad.exe", killedEvents[0]);
+    }
+
+    [Fact]
+    public void SetBlockList_with_empty_collection_clears_blocks_and_stops_killing()
+    {
+        var killedPids = new List<int>();
+        var candidates = new List<ProcessCandidate>
+        {
+            new(Pid: 401, ExeName: "notepad.exe", KillAction: () => killedPids.Add(401))
+        };
+
+        using var blocker = new RamAppBlocker(processEnumerator: () => candidates, autoStartWatcher: false);
+        blocker.SetBlockList(new[] { "notepad.exe" });
+        Assert.Single(blocker.GetBlockList());
+
+        blocker.SetBlockList(Array.Empty<string>());
+        Assert.Empty(blocker.GetBlockList());
+        Assert.False(blocker.IsBlocked("notepad.exe"));
+
+        blocker.CheckAndEnforce();
+        Assert.Empty(killedPids);
+    }
+
+    [Fact]
     public void Dispose_clears_blocklist_and_stops_watcher()
     {
         var blocker = new RamAppBlocker(autoStartWatcher: false);

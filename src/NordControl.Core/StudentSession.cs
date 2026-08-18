@@ -13,17 +13,56 @@ public enum SessionStatus
 
 public class StudentSession
 {
+    private bool _streamEnabled;
+    private bool _streamPaused;
+    private bool _lastShouldCapture;
+
     public SessionStatus Status { get; private set; } = SessionStatus.Idle;
     public string? StudentId { get; private set; }
     public string? SessionToken { get; private set; }
-    public bool StreamEnabled { get; set; } = false;
     public DateTime LastRecv { get; private set; }
-    public bool StreamPaused { get; private set; } = false;
+
+    public bool StreamEnabled
+    {
+        get => _streamEnabled;
+        set
+        {
+            if (_streamEnabled != value)
+            {
+                _streamEnabled = value;
+                CheckAndNotifyStreamState();
+            }
+        }
+    }
+
+    public bool StreamPaused
+    {
+        get => _streamPaused;
+        private set
+        {
+            if (_streamPaused != value)
+            {
+                _streamPaused = value;
+                CheckAndNotifyStreamState();
+            }
+        }
+    }
 
     public bool ShouldHoldPolicies => Status == SessionStatus.Online || Status == SessionStatus.Reconnecting;
     public bool ShouldCapture => Status == SessionStatus.Online && StreamEnabled && !StreamPaused;
 
     public event Action<SessionStatus, SessionStatus>? StatusChanged;
+    public event Action<bool>? StreamStateChanged;
+
+    private void CheckAndNotifyStreamState()
+    {
+        var current = ShouldCapture;
+        if (_lastShouldCapture != current)
+        {
+            _lastShouldCapture = current;
+            StreamStateChanged?.Invoke(current);
+        }
+    }
 
     public void OnJoinOk(string studentId, string token, DateTime now)
     {
@@ -32,6 +71,7 @@ public class StudentSession
         LastRecv = now;
         StreamPaused = false;
         SetStatus(SessionStatus.Online);
+        CheckAndNotifyStreamState();
     }
 
     public void OnMessageReceived(DateTime now)
@@ -42,6 +82,7 @@ public class StudentSession
         {
             SetStatus(SessionStatus.Online);
         }
+        CheckAndNotifyStreamState();
     }
 
     public void OnTcpDropped()
@@ -50,12 +91,14 @@ public class StudentSession
         {
             SetStatus(SessionStatus.Reconnecting);
         }
+        CheckAndNotifyStreamState();
     }
 
     public void OnSessionEnd()
     {
         StreamPaused = false;
         SetStatus(SessionStatus.Ended);
+        CheckAndNotifyStreamState();
     }
 
     public void Tick(DateTime now)
@@ -77,15 +120,17 @@ public class StudentSession
                 StreamPaused = false;
             }
         }
+        CheckAndNotifyStreamState();
     }
 
     public void ResetToIdle()
     {
         StudentId = null;
         SessionToken = null;
-        StreamEnabled = false;
-        StreamPaused = false;
+        _streamEnabled = false;
+        _streamPaused = false;
         SetStatus(SessionStatus.Idle);
+        CheckAndNotifyStreamState();
     }
 
     private void SetStatus(SessionStatus newStatus)

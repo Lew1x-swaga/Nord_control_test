@@ -16,6 +16,8 @@ public class RamAppBlocker : IAppBlocker
     private readonly HashSet<string> _blockList = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
 
+    public event Action<string>? ProcessKilled;
+
     private static readonly HashSet<string> ProtectedExeNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Teacher.exe",
@@ -133,6 +135,7 @@ public class RamAppBlocker : IAppBlocker
                     try
                     {
                         candidate.KillAction();
+                        ProcessKilled?.Invoke(normalized);
                     }
                     catch
                     {

@@ -179,6 +179,19 @@ public partial class MainWindow : Window
                 NewAppPathTextBox.Text = app.LaunchTarget;
             }
         };
+        LaunchAppSuggestBox.Submitted += async app =>
+        {
+            var target = !string.IsNullOrWhiteSpace(app?.LaunchTarget)
+                ? app.LaunchTarget
+                : (!string.IsNullOrWhiteSpace(NewAppPathTextBox.Text) ? NewAppPathTextBox.Text.Trim() : null);
+            var exe = app?.Exe ?? LaunchAppSuggestBox.QueryText;
+            var name = app?.Name;
+            if (!string.IsNullOrWhiteSpace(exe))
+            {
+                await LaunchSingleAppCoreAsync(exe, target, name);
+            }
+        };
+        BlockAppSuggestBox.Submitted += async _ => await AddBlockedAppCoreAsync();
         RefreshAppSuggestions();
     }
 
@@ -730,7 +743,45 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void LaunchSelectedButton_Click(object sender, RoutedEventArgs e)
+    private TaskCompletionSource<bool>? _conflictDialogTcs;
+
+    private Task<bool> ShowConflictDialogAsync(string title, string message, string confirmButtonText, bool isDestructive = false)
+    {
+        _conflictDialogTcs?.TrySetResult(false);
+        _conflictDialogTcs = new TaskCompletionSource<bool>();
+
+        ConflictDialogTitle.Text = title;
+        ConflictDialogMessage.Text = message;
+        ConflictConfirmButton.Content = confirmButtonText;
+
+        if (isDestructive)
+        {
+            ConflictConfirmButton.Background = (Brush)FindResource("Brush.Rose");
+        }
+        else
+        {
+            ConflictConfirmButton.Background = (Brush)FindResource("Brush.Blue");
+        }
+
+        ConflictDialogOverlay.Visibility = Visibility.Visible;
+        ConflictConfirmButton.Focus();
+
+        return _conflictDialogTcs.Task;
+    }
+
+    private void ConflictConfirmButton_Click(object sender, RoutedEventArgs e)
+    {
+        ConflictDialogOverlay.Visibility = Visibility.Collapsed;
+        _conflictDialogTcs?.TrySetResult(true);
+    }
+
+    private void ConflictCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        ConflictDialogOverlay.Visibility = Visibility.Collapsed;
+        _conflictDialogTcs?.TrySetResult(false);
+    }
+
+    private async Task LaunchSingleAppCoreAsync(string rawExe, string? launchTarget, string? name = null)
     {
         if (!_hub.IsRunning)
         {
@@ -744,14 +795,42 @@ public partial class MainWindow : Window
             return;
         }
 
+        var exe = ProcessNameHelper.Normalize(rawExe);
+        if (string.IsNullOrWhiteSpace(exe))
+        {
+            return;
+        }
+
+        var existingBlocked = _blockedApps.FirstOrDefault(b => string.Equals(b, exe, StringComparison.OrdinalIgnoreCase));
+        if (existingBlocked != null)
+        {
+            var confirm = await ShowConflictDialogAsync("Программа заблокирована", $"«{exe}» в блоклисте.", "Всё равно открыть", isDestructive: false);
+            if (!confirm)
+            {
+                return;
+            }
+
+            _blockedApps.Remove(existingBlocked);
+            SavePreset();
+            if (_hub.IsRunning)
+            {
+                await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
+            }
+        }
+
+        var sent = await _hub.SendLaunchAppAsync(_hub.SelectedStudentId, exe, launchTarget);
+        StatusTextBlock.Text = sent ? $"Запущено «{name ?? exe}» у выбранного ученика" : "Ошибка отправки команды запуска";
+    }
+
+    private async void LaunchSelectedButton_Click(object sender, RoutedEventArgs e)
+    {
         if (QuickAppsListBox.SelectedItem is not InstalledAppInfo app)
         {
             MessageBox.Show(this, "Выберите программу из списка быстрого запуска", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var sent = await _hub.SendLaunchAppAsync(_hub.SelectedStudentId, app.Exe, app.LaunchTarget);
-        StatusTextBlock.Text = sent ? $"Запущено «{app.Name}» у выбранного ученика" : "Ошибка отправки команды запуска";
+        await LaunchSingleAppCoreAsync(app.Exe, app.LaunchTarget, app.Name);
     }
 
     private async void LaunchAllButton_Click(object sender, RoutedEventArgs e)
@@ -768,7 +847,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        var count = await _hub.BroadcastLaunchAppAsync(app.Exe, app.LaunchTarget);
+        var exe = ProcessNameHelper.Normalize(app.Exe);
+        var existingBlocked = _blockedApps.FirstOrDefault(b => string.Equals(b, exe, StringComparison.OrdinalIgnoreCase));
+        if (existingBlocked != null)
+        {
+            var confirm = await ShowConflictDialogAsync("Программа заблокирована", $"«{exe}» в блоклисте.", "Всё равно открыть", isDestructive: false);
+            if (!confirm)
+            {
+                return;
+            }
+
+            _blockedApps.Remove(existingBlocked);
+            SavePreset();
+            if (_hub.IsRunning)
+            {
+                await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
+            }
+        }
+
+        var count = await _hub.BroadcastLaunchAppAsync(exe, app.LaunchTarget);
         StatusTextBlock.Text = $"Запущено «{app.Name}» у {count} учеников";
     }
 
@@ -786,6 +883,15 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(exe))
         {
             return;
+        }
+
+        if (_processes.Any(p => string.Equals(p.Exe, exe, StringComparison.OrdinalIgnoreCase)))
+        {
+            var confirm = await ShowConflictDialogAsync("Программа открыта", $"«{exe}» сейчас открыто.", "Всё равно запретить", isDestructive: true);
+            if (!confirm)
+            {
+                return;
+            }
         }
 
         if (!_blockedApps.Any(a => string.Equals(a, exe, StringComparison.OrdinalIgnoreCase)))
@@ -847,14 +953,15 @@ public partial class MainWindow : Window
 
     private async void ClearBlockListAll_Click(object sender, RoutedEventArgs e)
     {
-        if (!_hub.IsRunning)
+        _blockedApps.Clear();
+        SavePreset();
+
+        if (_hub.IsRunning)
         {
-            MessageBox.Show(this, "Сначала начните класс", "Блокировка приложений", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            await _hub.BroadcastBlockListAsync(Array.Empty<string>());
         }
 
-        var count = await _hub.BroadcastBlockListAsync(Array.Empty<string>());
-        StatusTextBlock.Text = $"Все блокировки сняты у {count} учеников";
+        StatusTextBlock.Text = "Все запреты сняты";
     }
 
     private async void BlockProcessMenuItem_Click(object sender, RoutedEventArgs e)
@@ -865,6 +972,46 @@ public partial class MainWindow : Window
     private async void BlockSelectedProcessButton_Click(object sender, RoutedEventArgs e)
     {
         await BlockSelectedProcessCoreAsync();
+    }
+
+    private async void ProcessesListView_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await BlockSelectedProcessCoreAsync();
+        }
+    }
+
+    private async void QuickAppsListBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && QuickAppsListBox.SelectedItem is InstalledAppInfo app)
+        {
+            e.Handled = true;
+            await LaunchSingleAppCoreAsync(app.Exe, app.LaunchTarget, app.Name);
+        }
+    }
+
+    private async void BlockedAppsListBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            if (_hub.IsRunning)
+            {
+                var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
+                StatusTextBlock.Text = $"Блоклист ({_blockedApps.Count} программ) применен к {count} ученикам";
+            }
+        }
+    }
+
+    private void HintsListView_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && HintsListView.SelectedItem is InstalledAppInfo)
+        {
+            e.Handled = true;
+            AddHintToQuickApps_Click(sender, e);
+        }
     }
 
     private ProcessItemInfo? GetSelectedProcess()
@@ -935,6 +1082,15 @@ public partial class MainWindow : Window
         }
 
         var exe = hint.Exe.Trim();
+        if (_processes.Any(p => string.Equals(p.Exe, exe, StringComparison.OrdinalIgnoreCase)))
+        {
+            var confirm = await ShowConflictDialogAsync("Программа открыта", $"«{exe}» сейчас открыто.", "Всё равно запретить", isDestructive: true);
+            if (!confirm)
+            {
+                return;
+            }
+        }
+
         if (!_blockedApps.Any(a => string.Equals(a, exe, StringComparison.OrdinalIgnoreCase)))
         {
             _blockedApps.Add(exe);
