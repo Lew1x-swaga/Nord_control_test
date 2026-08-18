@@ -53,7 +53,7 @@ public static class AppSuggestionFilter
     {
         if (maxResults <= 0)
         {
-            return Array.Empty<InstalledAppInfo>();
+            return [];
         }
 
         var items = catalog?.Where(a => a != null && !string.IsNullOrWhiteSpace(a.Exe)).ToList()

@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -85,6 +84,30 @@ public class ClassHub : IAsyncDisposable
             Client = client;
             Stream = stream;
         }
+
+        public async Task<bool> TrySendMessageAsync(WireMessage msg, int timeoutMs = 500, CancellationToken ct = default)
+        {
+            try
+            {
+                if (await SendLock.WaitAsync(timeoutMs, ct))
+                {
+                    try
+                    {
+                        await FrameCodec.WriteJsonMessageAsync(Stream, msg, ct);
+                        return true;
+                    }
+                    finally
+                    {
+                        SendLock.Release();
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
+        }
     }
 
     public ClassHub(int udpPort = ProtocolConstants.UdpPort, int tcpPort = ProtocolConstants.TcpPort, IClock? clock = null)
@@ -108,55 +131,13 @@ public class ClassHub : IAsyncDisposable
         // 1. Send stream_stop to previous student
         if (previousId != null && _activeConnections.TryGetValue(previousId, out var prevConn))
         {
-            var stopMsg = new WireMessage
-            {
-                V = ProtocolConstants.Version,
-                Type = "stream_stop"
-            };
-            var stopPayload = WireMessage.SerializeUtf8(stopMsg);
-
-            try
-            {
-                if (await prevConn.SendLock.WaitAsync(500))
-                {
-                    try
-                    {
-                        await FrameCodec.WriteAsync(prevConn.Stream, ProtocolConstants.JsonMessageType, stopPayload, CancellationToken.None);
-                    }
-                    finally
-                    {
-                        prevConn.SendLock.Release();
-                    }
-                }
-            }
-            catch { }
+            await prevConn.TrySendMessageAsync(new WireMessage { Type = "stream_stop" });
         }
 
         // 2. Send stream_start to newly selected student
         if (studentId != null && _activeConnections.TryGetValue(studentId, out var newConn))
         {
-            var startMsg = new WireMessage
-            {
-                V = ProtocolConstants.Version,
-                Type = "stream_start"
-            };
-            var startPayload = WireMessage.SerializeUtf8(startMsg);
-
-            try
-            {
-                if (await newConn.SendLock.WaitAsync(500))
-                {
-                    try
-                    {
-                        await FrameCodec.WriteAsync(newConn.Stream, ProtocolConstants.JsonMessageType, startPayload, CancellationToken.None);
-                    }
-                    finally
-                    {
-                        newConn.SendLock.Release();
-                    }
-                }
-            }
-            catch { }
+            await newConn.TrySendMessageAsync(new WireMessage { Type = "stream_start" });
         }
     }
 
@@ -169,37 +150,12 @@ public class ClassHub : IAsyncDisposable
             return false;
         }
 
-        var msg = new WireMessage
+        return await conn.TrySendMessageAsync(new WireMessage
         {
-            V = ProtocolConstants.Version,
             Type = "launch_app",
             Exe = exe,
             LaunchTarget = launchTarget
-        };
-
-        var payload = WireMessage.SerializeUtf8(msg);
-
-        try
-        {
-            if (await conn.SendLock.WaitAsync(500))
-            {
-                try
-                {
-                    await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, payload, CancellationToken.None);
-                    return true;
-                }
-                finally
-                {
-                    conn.SendLock.Release();
-                }
-            }
-        }
-        catch
-        {
-            // Transient send error
-        }
-
-        return false;
+        });
     }
 
     public async Task<int> BroadcastLaunchAppAsync(string exe, string? launchTarget = null)
@@ -228,36 +184,11 @@ public class ClassHub : IAsyncDisposable
             return false;
         }
 
-        var msg = new WireMessage
+        return await conn.TrySendMessageAsync(new WireMessage
         {
-            V = ProtocolConstants.Version,
             Type = "set_block_list",
-            ExeNames = exeNames != null ? exeNames.ToList() : new List<string>()
-        };
-
-        var payload = WireMessage.SerializeUtf8(msg);
-
-        try
-        {
-            if (await conn.SendLock.WaitAsync(500))
-            {
-                try
-                {
-                    await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, payload, CancellationToken.None);
-                    return true;
-                }
-                finally
-                {
-                    conn.SendLock.Release();
-                }
-            }
-        }
-        catch
-        {
-            // Transient send error
-        }
-
-        return false;
+            ExeNames = exeNames != null ? exeNames.ToList() : []
+        });
     }
 
     public async Task<int> BroadcastBlockListAsync(IReadOnlyList<string> exeNames)
@@ -334,64 +265,33 @@ public class ClassHub : IAsyncDisposable
         // 1. First, send empty set_block_list to release all student RAM restrictions
         var emptyBlockMsg = new WireMessage
         {
-            V = ProtocolConstants.Version,
             Type = "set_block_list",
-            ExeNames = new List<string>()
+            ExeNames = []
         };
-        var emptyBlockPayload = WireMessage.SerializeUtf8(emptyBlockMsg);
 
         foreach (var conn in activeConns)
         {
-            try
-            {
-                if (await conn.SendLock.WaitAsync(TimeSpan.FromMilliseconds(500)))
-                {
-                    try
-                    {
-                        await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, emptyBlockPayload, CancellationToken.None);
-                    }
-                    finally
-                    {
-                        conn.SendLock.Release();
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore transient send errors during shutdown
-            }
+            await conn.TrySendMessageAsync(emptyBlockMsg);
         }
 
         CleanupListeners();
 
         var sessionEnd = new WireMessage
         {
-            V = ProtocolConstants.Version,
             Type = "session_end",
             Reason = "class_ended"
         };
-        var endPayload = WireMessage.SerializeUtf8(sessionEnd);
 
         foreach (var conn in activeConns)
         {
             try
             {
-                await conn.SendLock.WaitAsync(TimeSpan.FromMilliseconds(500));
-                try
+                if (await conn.TrySendMessageAsync(sessionEnd))
                 {
-                    await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, endPayload, CancellationToken.None);
-                    try
+                    if (conn.Client.Connected)
                     {
-                        if (conn.Client.Connected)
-                        {
-                            conn.Client.Client?.Shutdown(SocketShutdown.Send);
-                        }
+                        conn.Client.Client?.Shutdown(SocketShutdown.Send);
                     }
-                    catch { }
-                }
-                finally
-                {
-                    conn.SendLock.Release();
                 }
             }
             catch
@@ -407,15 +307,7 @@ public class ClassHub : IAsyncDisposable
 
         foreach (var conn in activeConns)
         {
-            try
-            {
-                conn.Client.Close();
-                conn.Client.Dispose();
-            }
-            catch
-            {
-                // Ignore disposal errors
-            }
+            CloseClient(conn.Client);
         }
         _activeConnections.Clear();
 
@@ -480,7 +372,7 @@ public class ClassHub : IAsyncDisposable
 
                 if (text.StartsWith(probeHeader, StringComparison.Ordinal))
                 {
-                    var localIp = GetLocalIpAddress(result.RemoteEndPoint.Address);
+                    var localIp = LanEndpoints.GetAnnounceIpv4(result.RemoteEndPoint.Address);
                     var announcePacket = UdpPackets.Announce(_className ?? "Класс", localIp, _tcpPort);
                     var announceBytes = Encoding.UTF8.GetBytes(announcePacket);
 
@@ -563,12 +455,11 @@ public class ClassHub : IAsyncDisposable
             {
                 var rejectVersion = new WireMessage
                 {
-                    V = ProtocolConstants.Version,
                     Type = "join_reject",
                     Reason = "version",
                     Message = "Несовместимая версия"
                 };
-                await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(rejectVersion), ct);
+                await FrameCodec.WriteJsonMessageAsync(stream, rejectVersion, ct);
                 CloseClient(client);
                 return;
             }
@@ -577,12 +468,11 @@ public class ClassHub : IAsyncDisposable
             {
                 var rejectPin = new WireMessage
                 {
-                    V = ProtocolConstants.Version,
                     Type = "join_reject",
                     Reason = "bad_pin",
                     Message = "Неверный PIN"
                 };
-                await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(rejectPin), ct);
+                await FrameCodec.WriteJsonMessageAsync(stream, rejectPin, ct);
                 CloseClient(client);
                 return;
             }
@@ -627,19 +517,13 @@ public class ClassHub : IAsyncDisposable
 
             if (_activeConnections.TryRemove(studentId, out var oldConn))
             {
-                try
-                {
-                    oldConn.Client.Close();
-                    oldConn.Client.Dispose();
-                }
-                catch { }
+                CloseClient(oldConn.Client);
             }
 
             _activeConnections[studentId] = connection;
 
             var joinOk = new WireMessage
             {
-                V = ProtocolConstants.Version,
                 Type = "join_ok",
                 StudentId = studentId,
                 SessionToken = sessionToken,
@@ -647,30 +531,12 @@ public class ClassHub : IAsyncDisposable
                 ReconnectWindowMs = ProtocolConstants.ReconnectWindowMs
             };
 
-            await connection.SendLock.WaitAsync(ct);
-            try
-            {
-                await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinOk), ct);
-            }
-            finally
-            {
-                connection.SendLock.Release();
-            }
+            await connection.TrySendMessageAsync(joinOk, 5000, ct);
 
             // If this student is currently selected, send stream_start
             if (_selectedStudentId == studentId)
             {
-                var startMsg = new WireMessage { V = ProtocolConstants.Version, Type = "stream_start" };
-                var startPayload = WireMessage.SerializeUtf8(startMsg);
-                await connection.SendLock.WaitAsync(ct);
-                try
-                {
-                    await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, startPayload, ct);
-                }
-                finally
-                {
-                    connection.SendLock.Release();
-                }
+                await connection.TrySendMessageAsync(new WireMessage { Type = "stream_start" }, 5000, ct);
             }
 
             if (isReconnect)
@@ -715,7 +581,7 @@ public class ClassHub : IAsyncDisposable
                         }
                         else if (wireMsg.Type == "installed_hints")
                         {
-                            InstalledHintsReceived?.Invoke(studentId, wireMsg.Apps ?? (IReadOnlyList<InstalledAppInfo>)Array.Empty<InstalledAppInfo>());
+                            InstalledHintsReceived?.Invoke(studentId, wireMsg.Apps ?? (IReadOnlyList<InstalledAppInfo>)[]);
                         }
                     }
                 }
@@ -781,36 +647,14 @@ public class ClassHub : IAsyncDisposable
                     var seq = Interlocked.Increment(ref _heartbeatSeq);
                     var heartbeatMsg = new WireMessage
                     {
-                        V = ProtocolConstants.Version,
                         Type = "heartbeat",
                         Seq = seq
                     };
-                    var heartbeatPayload = WireMessage.SerializeUtf8(heartbeatMsg);
 
                     var activeConns = _activeConnections.Values.ToList();
                     foreach (var conn in activeConns)
                     {
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                if (await conn.SendLock.WaitAsync(1000, ct))
-                                {
-                                    try
-                                    {
-                                        await FrameCodec.WriteAsync(conn.Stream, ProtocolConstants.JsonMessageType, heartbeatPayload, ct);
-                                    }
-                                    finally
-                                    {
-                                        conn.SendLock.Release();
-                                    }
-                                }
-                            }
-                            catch
-                            {
-                                // Error sending heartbeat, will be cleaned up by read loop
-                            }
-                        }, ct);
+                        _ = conn.TrySendMessageAsync(heartbeatMsg, timeoutMs: 1000, ct);
                     }
                 }
 
@@ -881,11 +725,6 @@ public class ClassHub : IAsyncDisposable
             client.Dispose();
         }
         catch { }
-    }
-
-    private static string GetLocalIpAddress(IPAddress remoteAddress)
-    {
-        return LanEndpoints.GetAnnounceIpv4(remoteAddress);
     }
 
     public async ValueTask DisposeAsync()

@@ -87,7 +87,7 @@ public class ClassHubTests
                 AgentVersion = ProtocolConstants.AgentVersion
             };
 
-            await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+            await FrameCodec.WriteJsonMessageAsync(stream, joinMsg, CancellationToken.None);
 
             var responseFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
             Assert.NotNull(responseFrame);
@@ -133,7 +133,7 @@ public class ClassHubTests
                 AgentVersion = ProtocolConstants.AgentVersion
             };
 
-            await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+            await FrameCodec.WriteJsonMessageAsync(stream, joinMsg, CancellationToken.None);
 
             var responseFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
             Assert.NotNull(responseFrame);
@@ -184,7 +184,7 @@ public class ClassHubTests
                     Hostname = "DESKTOP-IVAN"
                 };
 
-                await FrameCodec.WriteAsync(stream1, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+                await FrameCodec.WriteJsonMessageAsync(stream1, joinMsg, CancellationToken.None);
                 var frame1 = await FrameCodec.ReadAsync(stream1, CancellationToken.None);
                 var reply1 = WireMessage.Deserialize(frame1!.Value.Payload)!;
 
@@ -208,7 +208,7 @@ public class ClassHubTests
                     SessionToken = sessionToken
                 };
 
-                await FrameCodec.WriteAsync(stream2, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(reconnectMsg), CancellationToken.None);
+                await FrameCodec.WriteJsonMessageAsync(stream2, reconnectMsg, CancellationToken.None);
                 var frame2 = await FrameCodec.ReadAsync(stream2, CancellationToken.None);
                 var reply2 = WireMessage.Deserialize(frame2!.Value.Payload)!;
 
@@ -244,7 +244,7 @@ public class ClassHubTests
                     DisplayName = "Иван",
                     Hostname = "PC-CLASS-01"
                 };
-                await FrameCodec.WriteAsync(stream1, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+                await FrameCodec.WriteJsonMessageAsync(stream1, joinMsg, CancellationToken.None);
                 var reply1 = WireMessage.Deserialize((await FrameCodec.ReadAsync(stream1, CancellationToken.None))!.Value.Payload)!;
                 studentId = reply1.StudentId!;
             }
@@ -263,7 +263,7 @@ public class ClassHubTests
                     DisplayName = "Иван Петров",
                     Hostname = "PC-CLASS-01"
                 };
-                await FrameCodec.WriteAsync(stream2, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinAgain), CancellationToken.None);
+                await FrameCodec.WriteJsonMessageAsync(stream2, joinAgain, CancellationToken.None);
                 var reply2 = WireMessage.Deserialize((await FrameCodec.ReadAsync(stream2, CancellationToken.None))!.Value.Payload)!;
                 Assert.Equal("join_ok", reply2.Type);
                 Assert.Equal(studentId, reply2.StudentId);
@@ -299,7 +299,7 @@ public class ClassHubTests
             Hostname = "DESKTOP-IVAN"
         };
 
-        await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+        await FrameCodec.WriteJsonMessageAsync(stream, joinMsg, CancellationToken.None);
         var joinOkFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
         Assert.NotNull(joinOkFrame);
 
@@ -344,7 +344,7 @@ public class ClassHubTests
                 Hostname = "DESKTOP-IVAN"
             };
 
-            await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+            await FrameCodec.WriteJsonMessageAsync(stream, joinMsg, CancellationToken.None);
 
             var responseFrame = await FrameCodec.ReadAsync(stream, CancellationToken.None);
             Assert.NotNull(responseFrame);

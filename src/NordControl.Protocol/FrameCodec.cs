@@ -30,6 +30,12 @@ public static class FrameCodec
         await stream.FlushAsync(ct);
     }
 
+    public static Task WriteJsonMessageAsync(Stream stream, WireMessage msg, CancellationToken ct = default)
+    {
+        var payload = WireMessage.SerializeUtf8(msg);
+        return WriteAsync(stream, ProtocolConstants.JsonMessageType, payload, ct);
+    }
+
     public static async Task<TcpFrame?> ReadAsync(Stream stream, CancellationToken ct)
     {
         var header = new byte[5];

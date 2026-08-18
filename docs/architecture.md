@@ -1,6 +1,6 @@
 # Архитектура
 
-Статус: Teacher Hub принят; heartbeat — переживает обрыв LAN и не зависит от интернета.
+Статус: этапы 1–3 приняты (v0.1.2). Heartbeat переживает обрыв LAN и не зависит от интернета.
 
 Стек зафиксирован: **C# / .NET 8 / WPF**. Не WinUI, не Electron.
 
@@ -8,10 +8,10 @@
 
 ```text
 NordControl.sln
-  src/NordControl.Protocol    кадры TCP, JSON, UDP-строки, константы
-  src/NordControl.Core        стейт-машина, ClassHub, ClassClient; позже Policy
+  src/NordControl.Protocol    кадры TCP, JSON, UDP-строки, константы, JpegFrame
+  src/NordControl.Core        стейт-машина, ClassHub, ClassClient, RAM-политики
   src/NordControl.Teacher     только WPF поверх ClassHub
-  src/NordControl.Student     только WPF/tray поверх ClassClient
+  src/NordControl.Student     WPF/tray, захват DXGI/GDI, баннер надзора, тосты
   tests/NordControl.Tests     xUnit (net8.0), без WPF
 ```
 
@@ -20,27 +20,25 @@ NordControl.sln
 | Модуль | Ответственность |
 |---|---|
 | Protocol | На проводе. Без WPF и Win32 |
-| Core | `StudentSession`, `ClassHub`, `ClassClient`. На этапе 3 — `ProcessPolicy` |
-| Teacher | UI списка, PIN, старт/стоп класса |
-| Student | Плашка, трей, поле PIN/IP |
+| Core | `StudentSession`, `ClassHub`, `ClassClient`, `RamAppBlocker`, `AppLauncher`, пресет |
+| Teacher | UI списка, PIN, JPEG выбранного, процессы, запуск/блоклист |
+| Student | Плашка, трей, захват экрана, вотчер процессов, тосты/баннер |
 
-Этап 2: захват DXGI живёт в Student (Windows), в Protocol уходит JPEG как `messageType=2`. Не делать, пока этап 1 не принят. Оркестрация кода: `docs/subagents.md`.  
-Этап 3: Policy только в Core/Student, в RAM.  
-Позже: Windows Service для автозапуска — тот же Core.
+Захват DXGI живёт в Student (Windows), в Protocol уходит JPEG как `messageType=2`. Политики только в Core/Student, в RAM. Позже: Windows Service для автозапуска — тот же Core (этап 5).
 
 ## Топология
 
 ```text
 Учитель  UDP 47820  announce (без PIN)
-         TCP 47821  сессия: JSON + позже JPEG
+         TCP 47821  сессия: JSON + JPEG выбранного
 
 Ученик   исходящий TCP
          UDP probe
 ```
 
-Bind `0.0.0.0`. В UDP-ответе — IPv4 того интерфейса, с которого ушёл ответ (или адрес из полученного probe). Несколько NIC: отвечать на probe с того же сокета.
+Bind `0.0.0.0`. В UDP-ответе — IPv4 того интерфейса, с которого ушёл ответ (или адрес из полученного probe). Несколько NIC: отвечать на probe с того же сокета. WAN-адреса в announce/ручном IP отклоняются.
 
-Школьный Wi‑Fi с client isolation ломает discovery. Основной сценарий — одна LAN без изоляции / проводной кабинет. Ручной ввод IP учителя: поле в UI ученика можно сделать уже на этапе 1 как запас (маленькая форма «IP, если класс не найден») — полезно для двух машин с изоляцией.
+Школьный Wi‑Fi с client isolation ломает discovery. Основной сценарий — одна LAN без изоляции / проводной кабинет. Запас: ручной ввод IP учителя в UI ученика.
 
 ## Стейт-машина ученика
 
@@ -71,14 +69,14 @@ Teacher.exe / Student.exe **не** завершаются из этих пере
 
 ## Потоки
 
-- WPF UI-поток: только отображение.
+- WPF UI-поток: только отображение (JPEG приходит уже `Freeze()`).
 - Приём TCP: отдельный async; маршалинг в UI через Dispatcher.
-- Этап 2: захват DXGI на своём потоке, не UI.
-- Вотчер процессов (этап 3): свой цикл ~500 мс, не UI.
+- Захват DXGI на своём потоке, не UI.
+- Вотчер процессов: свой цикл ~500 мс, не UI.
 
 ## Логи
 
-`%LocalAppData%\NordControl\logs\teacher-*.log` и `student-*.log`. Вращение простое (новый файл за день). Без отправки наружу. Не писать JPEG в лог.
+`%LocalAppData%\NordControl\logs\teacher-*.log` и `student-*.log`. Ротация: файл до 10 MB, до 3 архивов. Без отправки наружу. Не писать JPEG в лог.
 
 ## Безопасность (осознанно слабо)
 
@@ -88,7 +86,7 @@ PIN из 6 смешанных символов — от соседнего ка�
 
 См. [ui.md](ui.md). PIN только для Join; после Join крестик сворачивает агент в трей.
 
-## Захват и политики (этапы 2–3, не реализовывать в первой сессии кода)
+## Захват и политики
 
 DXGI → JPEG 8–12 fps, длинная сторона ≤1280, только выбранный.
 

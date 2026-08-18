@@ -10,7 +10,7 @@ namespace NordControl.Teacher;
 
 public partial class AppSuggestBox : UserControl
 {
-    private IReadOnlyList<InstalledAppInfo> _catalog = Array.Empty<InstalledAppInfo>();
+    private IReadOnlyList<InstalledAppInfo> _catalog = [];
     private bool _suppressFilter;
 
     private Window? _hostWindow;
@@ -82,7 +82,7 @@ public partial class AppSuggestBox : UserControl
 
     public void SetCatalog(IReadOnlyList<InstalledAppInfo> catalog)
     {
-        _catalog = catalog ?? Array.Empty<InstalledAppInfo>();
+        _catalog = catalog ?? [];
         if (IsKeyboardFocusWithin)
         {
             RefreshSuggestions(open: SuggestPopup.IsOpen);

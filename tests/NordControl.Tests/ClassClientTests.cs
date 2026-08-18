@@ -368,7 +368,7 @@ public class ClassClientTests
                     StudentId = "test-student-id",
                     SessionToken = "test-token-123"
                 };
-                await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinOkMsg), cts.Token);
+                await FrameCodec.WriteJsonMessageAsync(stream, joinOkMsg, cts.Token);
 
                 // Wait for client to become Online
                 var timeout = DateTime.UtcNow.AddSeconds(3);
@@ -409,7 +409,7 @@ public class ClassClientTests
                     StudentId = "test-student-id",
                     SessionToken = "test-token-123"
                 };
-                await FrameCodec.WriteAsync(stream2, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinOkMsg2), cts.Token);
+                await FrameCodec.WriteJsonMessageAsync(stream2, joinOkMsg2, cts.Token);
 
                 // Client should become Online again
                 var onlineTimeout = DateTime.UtcNow.AddSeconds(3);

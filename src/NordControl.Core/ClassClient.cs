@@ -346,7 +346,6 @@ public class ClassClient : IAsyncDisposable, IDisposable
         // Send join_class frame
         var joinMsg = new WireMessage
         {
-            V = ProtocolConstants.Version,
             Type = "join_class",
             Pin = _pin,
             DisplayName = _displayName ?? Environment.MachineName,
@@ -355,8 +354,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
             SessionToken = _session.SessionToken
         };
 
-        var joinBytes = WireMessage.SerializeUtf8(joinMsg);
-        await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, joinBytes, ct);
+        await FrameCodec.WriteJsonMessageAsync(stream, joinMsg, ct);
 
         // Read handshake reply
         var handshakeFrame = await FrameCodec.ReadAsync(stream, ct);
@@ -406,12 +404,10 @@ public class ClassClient : IAsyncDisposable, IDisposable
             {
                 var hintsMsg = new WireMessage
                 {
-                    V = ProtocolConstants.Version,
                     Type = "installed_hints",
                     Apps = apps.ToList()
                 };
-                var hintsBytes = WireMessage.SerializeUtf8(hintsMsg);
-                await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, hintsBytes, ct);
+                await FrameCodec.WriteJsonMessageAsync(stream, hintsMsg, ct);
             }
         }
         catch
@@ -468,7 +464,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
                         }
                         else if (wireMsg.Type == "set_block_list")
                         {
-                            _appBlocker.SetBlockList(wireMsg.ExeNames ?? (IEnumerable<string>)Array.Empty<string>());
+                            _appBlocker.SetBlockList(wireMsg.ExeNames ?? (IEnumerable<string>)[]);
                         }
                     }
                 }
@@ -506,22 +502,11 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
                 var hbMsg = new WireMessage
                 {
-                    V = ProtocolConstants.Version,
                     Type = "heartbeat",
                     Seq = Interlocked.Increment(ref _heartbeatSeq)
                 };
 
-                var hbPayload = WireMessage.SerializeUtf8(hbMsg);
-
-                await sendLock.WaitAsync(ct);
-                try
-                {
-                    await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, hbPayload, ct);
-                }
-                finally
-                {
-                    sendLock.Release();
-                }
+                await TrySendJsonMessageAsync(stream, sendLock, hbMsg, ct, 1000);
             }
             catch (OperationCanceledException)
             {
@@ -607,16 +592,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
                     var procMsg = ProcessListCallback();
                     if (procMsg != null)
                     {
-                        var procPayload = WireMessage.SerializeUtf8(procMsg);
-                        await sendLock.WaitAsync(ct);
-                        try
-                        {
-                            await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, procPayload, ct);
-                        }
-                        finally
-                        {
-                            sendLock.Release();
-                        }
+                        await TrySendJsonMessageAsync(stream, sendLock, procMsg, ct, 500);
                     }
                 }
 
@@ -631,6 +607,30 @@ public class ClassClient : IAsyncDisposable, IDisposable
                 // Ignore transient process list send failures
             }
         }
+    }
+
+    private static async Task<bool> TrySendJsonMessageAsync(NetworkStream stream, SemaphoreSlim sendLock, WireMessage msg, CancellationToken ct, int timeoutMs = 500)
+    {
+        try
+        {
+            if (await sendLock.WaitAsync(timeoutMs, ct))
+            {
+                try
+                {
+                    await FrameCodec.WriteJsonMessageAsync(stream, msg, ct);
+                    return true;
+                }
+                finally
+                {
+                    sendLock.Release();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
     }
 
     private void OnNetworkAddressChanged(object? sender, EventArgs e)

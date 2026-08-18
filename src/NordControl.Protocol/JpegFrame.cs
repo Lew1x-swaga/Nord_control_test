@@ -30,7 +30,7 @@ public readonly record struct JpegFrame(uint Width, uint Height, ulong Timestamp
         var height = BinaryPrimitives.ReadUInt32BigEndian(payload.Slice(4, 4));
         var timestampMs = BinaryPrimitives.ReadUInt64BigEndian(payload.Slice(8, 8));
         var dataLen = payload.Length - HeaderSize;
-        var data = dataLen > 0 ? payload.Slice(HeaderSize).ToArray() : Array.Empty<byte>();
+        var data = dataLen > 0 ? payload.Slice(HeaderSize).ToArray() : [];
 
         return new JpegFrame(width, height, timestampMs, data);
     }

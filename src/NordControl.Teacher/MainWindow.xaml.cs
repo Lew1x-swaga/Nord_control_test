@@ -958,7 +958,7 @@ public partial class MainWindow : Window
 
         if (_hub.IsRunning)
         {
-            await _hub.BroadcastBlockListAsync(Array.Empty<string>());
+            await _hub.BroadcastBlockListAsync([]);
         }
 
         StatusTextBlock.Text = "Все запреты сняты";

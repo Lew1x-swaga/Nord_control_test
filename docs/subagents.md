@@ -1,85 +1,15 @@
 # Субагенты и навыки
 
-Файлы агентов Cursor (системный промпт):
-
-### Этап 1: Связь и сессии
-| Файл | Имя | Когда звать |
-|---|---|---|
-| `.cursor/agents/nord-stage1-implementer.md` | `nord-stage1-implementer` | одна волна кода этапа 1 |
-| `.cursor/agents/nord-stage1-reviewer.md` | `nord-stage1-reviewer` | сразу после волны этапа 1 |
-| `.cursor/agents/nord-stage1-final-reviewer.md` | `nord-stage1-final-reviewer` | после волны 5, `dotnet test` зелёный |
-
-### Этап 2: Экран и процессы
-| Файл | Имя | Когда звать |
-|---|---|---|
-| `.cursor/agents/nord-stage2-implementer.md` | `nord-stage2-implementer` | одна волна кода этапа 2 |
-| `.cursor/agents/nord-stage2-reviewer.md` | `nord-stage2-reviewer` | сразу после волны этапа 2 |
-| `.cursor/agents/nord-stage2-final-reviewer.md` | `nord-stage2-final-reviewer` | после волны 4, `dotnet test` зелёный |
-
-### Этап 3: Запуск и RAM-блокировка
-| Файл | Имя | Когда звать |
-|---|---|---|
-| `.cursor/agents/nord-stage3-implementer.md` | `nord-stage3-implementer` | одна волна кода этапа 3 |
-| `.cursor/agents/nord-stage3-reviewer.md` | `nord-stage3-reviewer` | сразу после волны этапа 3 |
-| `.cursor/agents/nord-stage3-final-reviewer.md` | `nord-stage3-final-reviewer` | после волны 4, `dotnet test` зелёный |
-
-Для модели: задачи в планах этапов (`AGENT_PLAN.md`, `AGENT_PLAN_STAGE2.md`, `AGENT_PLAN_STAGE3.md`) **последовательные** — их нельзя делать параллельно в одном дереве файлов.
-
-## Число
+Этапы 1–3 закрыты. Файлы `.cursor/agents/nord-stage*-*.md` — архив волн, не очередь на повторную реализацию.
 
 | Параметр | Значение | Почему |
 |---|---|---|
 | `concurrent_implementers` | **1** | Один sln, общие типы. Параллельные писатели конфликтуют |
-| `waves_stage1` | **5** | Склеены зависимые Task 1–9 |
-| `waves_stage2` | **4** | Склеены зависимые Task 10–17 |
-| `waves_stage3` | **4** | Склеены зависимые Task 18–25 |
-| `reviewer_per_wave` | **1** | После каждой волны, не после каждого мелкого шага |
-| `final_reviewer` | **1** | Когда `dotnet test` зелёный в конце этапа |
 
-Не путать «волны» с «одновременными агентами». Живой writer всегда один.
+Новый этап (4+) — отдельный план в `docs/`, затем отдельные агенты. Пока плана этапа 4 нет — не диспатчить stage-1/2/3 implementer.
 
-## Волны Этапа 3
+## Что не вызывать для закрытых этапов
 
-| Wave | Tasks | Роль | REQUIRED skill | Модель |
-|---|---|---|---|---|
-| 1 | 18–19 | Protocol DTO (`installed_hints`, `launch_app`, `set_block_list`) | `test-driven-development` | standard |
-| 2 | 20–21 | `AppBlocker` (RAM), `AppLauncher`, `InstalledAppsScanner` | `test-driven-development` | standard |
-| 3 | 22–23 | `ClassHub` + `ClassClient` + TeacherPreset | `test-driven-development` | standard |
-| 4 | 24–25 | WPF UI Teacher (пресеты, запуск, блоклист) + LoopbackStage3 | `verification-before-completion` | standard |
-
-Не путать «волны» с «одновременными агентами». Живой writer всегда один.
-
-## Волны
-
-| Wave | Tasks | Роль | REQUIRED skill | Модель |
-|---|---|---|---|---|
-| 1 | 1–3 | solution + Protocol + `StudentSession` | `test-driven-development` | standard |
-| 2 | 4 | `ClassHub` | `test-driven-development` | standard |
-| 3 | 5 | `ClassClient` | `test-driven-development` | standard |
-| 4 | 6–7 | WPF Teacher + Student | нет TDD на XAML; не ломать тесты Core | standard |
-| 5 | 8–9 | loopback + `dotnet test` | `test-driven-development` (loopback), `verification-before-completion` | standard |
-
-Если тесты красные: `systematic-debugging`, не «добавить JPEG».
-
-После каждой волны: субагент `nord-stage1-reviewer`. Смотрит: FR этапа 1, инварианты, нет этапа 2.
-
-В конце: `nord-stage1-final-reviewer` по всему этапу 1.
-
-## Что не вызывать
-
-- `brainstorming`, `writing-plans` — концепт закрыт
-- `using-git-worktrees` — только если человек попросил отдельное дерево
+- Повтор волн 1–5 этапа 1, волн 1–4 этапов 2 и 3
+- `brainstorming`, `writing-plans` — концепт ядра закрыт
 - параллельный `dispatching-parallel-agents` на запись в этот репозиторий
-
-## Бриф субагенту (шаблон)
-
-```text
-ROLE: implementer wave N
-READ: docs/AGENT_PLAN.md (only Wave N + YAML header + Global Constraints)
-READ: docs/protocol.md (if wave 1-3,5)
-DONE_WHEN: <command from plan>
-DO_NOT: stage 2, commit unless user asked, internet ping
-SKILL: <from table>
-```
-
-Контроллер не копирует историю чата в бриф.

@@ -8,7 +8,7 @@ Big-endian:
 
 ```text
 uint32 payloadLength     // длина (type + payload), не включая эти 4 байта
-uint8  messageType       // 1 = UTF-8 JSON, 2 = JPEG (этап 2)
+uint8  messageType       // 1 = UTF-8 JSON, 2 = JPEG
 bytes  payload
 ```
 
@@ -16,7 +16,7 @@ bytes  payload
 
 Тип 1: JSON-объект, поле `"type"` в snake_case, `"v": 1`.
 
-Тип 2 (этап 2): `uint32 width`, `uint32 height`, `uint64 ts_ms`, далее JPEG. Не JSON и не base64.
+Тип 2: `uint32 width`, `uint32 height`, `uint64 ts_ms`, далее JPEG. Не JSON и не base64.
 
 ## Константы
 
@@ -48,7 +48,7 @@ NORD1|announce|v=1|name=Класс|ip=192.168.1.5|tcp=47821
 
 `name` без `|`. Если класс не найден за ~2 с — повтор probe, плюс опционально ручной IP.
 
-## JSON этапа 1 (обязательны сейчас)
+## JSON сессии
 
 `join_class` ученик → учитель:
 
@@ -88,9 +88,9 @@ NORD1|announce|v=1|name=Класс|ip=192.168.1.5|tcp=47821
 
 `reason`: `teacher_disconnect` | `class_ended`.
 
-Неизвестный `type` при `v=1`: игнорировать кадр, не рвать сокет (задел на этап 2).
+Неизвестный `type` при `v=1`: игнорировать кадр, не рвать сокет.
 
-## JSON / бинарь этапов 2–3 (спецификация есть, код — не в первой сессии)
+## JSON надзора и политик
 
 `stream_start` / `stream_stop`: `{"v":1,"type":"stream_start"}` (тело пустое кроме v/type). Только выбранному.
 

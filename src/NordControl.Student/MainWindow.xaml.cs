@@ -23,7 +23,6 @@ public partial class MainWindow : Window
     private readonly IScreenCapturer _screenCapturer = new DxgiScreenCapturer();
     private readonly ProcessMonitor _processMonitor = new();
     private readonly InstalledAppsScanner _appsScanner = new();
-    private bool _joinPanelCollapsed;
 
     private static readonly SolidColorBrush BrushOnline = FreezeRgb(16, 185, 129);
     private static readonly SolidColorBrush BrushReconnect = FreezeRgb(217, 119, 6);
@@ -381,7 +380,6 @@ public partial class MainWindow : Window
     private void SetJoinPanelVisible(bool visible)
     {
         JoinPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        _joinPanelCollapsed = !visible;
     }
 
     private void CollapseButton_Click(object sender, RoutedEventArgs e)
