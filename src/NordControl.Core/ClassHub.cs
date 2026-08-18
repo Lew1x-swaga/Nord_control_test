@@ -9,6 +9,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using NordControl.Core.Helpers;
 using NordControl.Protocol;
 
 namespace NordControl.Core;
@@ -561,7 +562,13 @@ public class ClassHub : IAsyncDisposable
             if (!string.IsNullOrEmpty(joinMsg.SessionToken) && _studentIdByToken.TryGetValue(joinMsg.SessionToken, out var existingId))
             {
                 studentId = existingId;
-                sessionToken = joinMsg.SessionToken;
+                sessionToken = joinMsg.SessionToken!;
+                isReconnect = true;
+            }
+            else if (TryFindStudentByHostname(joinMsg.Hostname, out var byHost))
+            {
+                studentId = byHost.Id;
+                sessionToken = byHost.SessionToken ?? Guid.NewGuid().ToString();
                 isReconnect = true;
             }
             else
@@ -695,11 +702,9 @@ public class ClassHub : IAsyncDisposable
                 if (_activeConnections.TryGetValue(assignedStudentId, out var active) && ReferenceEquals(active.Client, client))
                 {
                     _activeConnections.TryRemove(assignedStudentId, out _);
-                }
 
-                if (!ct.IsCancellationRequested && _studentsById.TryGetValue(assignedStudentId, out var currentStudent))
-                {
-                    if (currentStudent.Status == StudentHubStatus.Online)
+                    if (!ct.IsCancellationRequested && _studentsById.TryGetValue(assignedStudentId, out var currentStudent)
+                        && currentStudent.Status == StudentHubStatus.Online)
                     {
                         var updated = currentStudent with { Status = StudentHubStatus.Reconnecting };
                         _studentsById[assignedStudentId] = updated;
@@ -815,6 +820,27 @@ public class ClassHub : IAsyncDisposable
         }
     }
 
+    private bool TryFindStudentByHostname(string? hostname, out ConnectedStudent student)
+    {
+        student = null!;
+        if (string.IsNullOrWhiteSpace(hostname))
+        {
+            return false;
+        }
+
+        foreach (var existing in _studentsById.Values)
+        {
+            if (string.Equals(existing.Hostname, hostname, StringComparison.OrdinalIgnoreCase)
+                && existing.Status != StudentHubStatus.Online)
+            {
+                student = existing;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void CloseClient(TcpClient client)
     {
         try
@@ -827,46 +853,7 @@ public class ClassHub : IAsyncDisposable
 
     private static string GetLocalIpAddress(IPAddress remoteAddress)
     {
-        if (IPAddress.IsLoopback(remoteAddress))
-        {
-            return "127.0.0.1";
-        }
-
-        try
-        {
-            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
-            socket.Connect(remoteAddress, 1);
-            if (socket.LocalEndPoint is IPEndPoint endPoint && endPoint.Address.AddressFamily == AddressFamily.InterNetwork)
-            {
-                return endPoint.Address.ToString();
-            }
-        }
-        catch
-        {
-        }
-
-        try
-        {
-            foreach (var netInterface in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (netInterface.OperationalStatus != OperationalStatus.Up)
-                    continue;
-
-                var ipProps = netInterface.GetIPProperties();
-                foreach (var addr in ipProps.UnicastAddresses)
-                {
-                    if (addr.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(addr.Address))
-                    {
-                        return addr.Address.ToString();
-                    }
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        return "127.0.0.1";
+        return LanEndpoints.GetAnnounceIpv4(remoteAddress);
     }
 
     public async ValueTask DisposeAsync()

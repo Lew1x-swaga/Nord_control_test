@@ -224,6 +224,63 @@ public class ClassHubTests
     }
 
     [Fact]
+    public async Task JoinClass_SameHostnameWithoutToken_ReusesStudentId()
+    {
+        var hub = new ClassHub(TestUdpPort, TestTcpPort);
+        await hub.StartClass("Класс-101", "1234", CancellationToken.None);
+
+        try
+        {
+            string studentId;
+            using (var client1 = new TcpClient())
+            {
+                await client1.ConnectAsync(IPAddress.Loopback, TestTcpPort);
+                using var stream1 = client1.GetStream();
+                var joinMsg = new WireMessage
+                {
+                    V = ProtocolConstants.Version,
+                    Type = "join_class",
+                    Pin = "1234",
+                    DisplayName = "Иван",
+                    Hostname = "PC-CLASS-01"
+                };
+                await FrameCodec.WriteAsync(stream1, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinMsg), CancellationToken.None);
+                var reply1 = WireMessage.Deserialize((await FrameCodec.ReadAsync(stream1, CancellationToken.None))!.Value.Payload)!;
+                studentId = reply1.StudentId!;
+            }
+
+            await Task.Delay(300);
+
+            using (var client2 = new TcpClient())
+            {
+                await client2.ConnectAsync(IPAddress.Loopback, TestTcpPort);
+                using var stream2 = client2.GetStream();
+                var joinAgain = new WireMessage
+                {
+                    V = ProtocolConstants.Version,
+                    Type = "join_class",
+                    Pin = "1234",
+                    DisplayName = "Иван Петров",
+                    Hostname = "PC-CLASS-01"
+                };
+                await FrameCodec.WriteAsync(stream2, ProtocolConstants.JsonMessageType, WireMessage.SerializeUtf8(joinAgain), CancellationToken.None);
+                var reply2 = WireMessage.Deserialize((await FrameCodec.ReadAsync(stream2, CancellationToken.None))!.Value.Payload)!;
+                Assert.Equal("join_ok", reply2.Type);
+                Assert.Equal(studentId, reply2.StudentId);
+            }
+
+            var listed = hub.Students.ToList();
+            Assert.Single(listed);
+            Assert.Equal(studentId, listed[0].Id);
+            Assert.Equal("Иван Петров", listed[0].DisplayName);
+        }
+        finally
+        {
+            await hub.StopClassAsync();
+        }
+    }
+
+    [Fact]
     public async Task StopClassAsync_SendsSessionEndToClients()
     {
         var hub = new ClassHub(TestUdpPort, TestTcpPort);

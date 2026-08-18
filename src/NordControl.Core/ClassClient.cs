@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using NordControl.Core.Helpers;
 using NordControl.Core.Policies;
 using NordControl.Protocol;
 
@@ -33,6 +34,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
     private string? _lastTeacherIp;
     private int? _lastTeacherTcpPort;
+    private bool _pauseDiscoveryAfterClassEnd;
 
     public string? LastTeacherIp => _lastTeacherIp;
     public int? LastTeacherTcpPort => _lastTeacherTcpPort;
@@ -127,6 +129,35 @@ public class ClassClient : IAsyncDisposable, IDisposable
             {
                 if (_session.Status == SessionStatus.Idle)
                 {
+                    if (_pauseDiscoveryAfterClassEnd)
+                    {
+                        try
+                        {
+                            await Task.Delay(Timeout.Infinite, token);
+                        }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    if (!string.IsNullOrEmpty(_manualTeacherIp) && !LanEndpoints.IsClassroomIpv4(_manualTeacherIp))
+                    {
+                        Error?.Invoke("IP учителя должен быть из локальной сети");
+                        try
+                        {
+                            await Task.Delay(Timeout.Infinite, token);
+                        }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested)
+                        {
+                            break;
+                        }
+
+                        continue;
+                    }
+
                     var (ip, port) = await DiscoverTeacherAsync(token);
                     if (string.IsNullOrEmpty(ip))
                     {
@@ -205,6 +236,16 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
     private async Task<(string? ip, int port)> DiscoverTeacherAsync(CancellationToken ct, int timeoutMs = 2000)
     {
+        if (!string.IsNullOrEmpty(_manualTeacherIp))
+        {
+            if (!LanEndpoints.IsClassroomIpv4(_manualTeacherIp))
+            {
+                return (null, 0);
+            }
+
+            return (_manualTeacherIp, _tcpPort);
+        }
+
         using var udp = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
         try
         {
@@ -216,13 +257,15 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
         try
         {
-            // Send broadcast probe and loopback probe
-            await udp.SendAsync(probeBytes, probeBytes.Length, new IPEndPoint(IPAddress.Broadcast, _udpPort));
-            await udp.SendAsync(probeBytes, probeBytes.Length, new IPEndPoint(IPAddress.Loopback, _udpPort));
-
-            if (!string.IsNullOrEmpty(_manualTeacherIp) && IPAddress.TryParse(_manualTeacherIp, out var parsedManualIp))
+            foreach (var dest in LanEndpoints.GetUdpProbeDestinations(_udpPort))
             {
-                await udp.SendAsync(probeBytes, probeBytes.Length, new IPEndPoint(parsedManualIp, _udpPort));
+                try
+                {
+                    await udp.SendAsync(probeBytes, probeBytes.Length, dest);
+                }
+                catch
+                {
+                }
             }
         }
         catch { }
@@ -256,11 +299,6 @@ public class ClassClient : IAsyncDisposable, IDisposable
         catch (Exception) when (!ct.IsCancellationRequested)
         {
             // Timeout or socket disposed on timeout
-        }
-
-        if (!string.IsNullOrEmpty(_manualTeacherIp))
-        {
-            return (_manualTeacherIp, _tcpPort);
         }
 
         return (null, 0);
@@ -407,9 +445,11 @@ public class ClassClient : IAsyncDisposable, IDisposable
                     {
                         if (wireMsg.Type == "session_end")
                         {
+                            _pauseDiscoveryAfterClassEnd = true;
                             _appBlocker.Clear();
                             _session.OnSessionEnd();
                             _session.ResetToIdle();
+                            RequestStop();
                             break;
                         }
                         else if (wireMsg.Type == "stream_start")
@@ -560,27 +600,25 @@ public class ClassClient : IAsyncDisposable, IDisposable
         {
             try
             {
+                if (_session.Status == SessionStatus.Online && ProcessListCallback != null)
+                {
+                    var procMsg = ProcessListCallback();
+                    if (procMsg != null)
+                    {
+                        var procPayload = WireMessage.SerializeUtf8(procMsg);
+                        await sendLock.WaitAsync(ct);
+                        try
+                        {
+                            await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, procPayload, ct);
+                        }
+                        finally
+                        {
+                            sendLock.Release();
+                        }
+                    }
+                }
+
                 await Task.Delay(2500, ct);
-
-                if (_session.Status != SessionStatus.Online || ProcessListCallback == null)
-                {
-                    continue;
-                }
-
-                var procMsg = ProcessListCallback();
-                if (procMsg != null)
-                {
-                    var procPayload = WireMessage.SerializeUtf8(procMsg);
-                    await sendLock.WaitAsync(ct);
-                    try
-                    {
-                        await FrameCodec.WriteAsync(stream, ProtocolConstants.JsonMessageType, procPayload, ct);
-                    }
-                    finally
-                    {
-                        sendLock.Release();
-                    }
-                }
             }
             catch (OperationCanceledException)
             {

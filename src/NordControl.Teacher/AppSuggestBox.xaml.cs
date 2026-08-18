@@ -13,9 +13,58 @@ public partial class AppSuggestBox : UserControl
     private IReadOnlyList<InstalledAppInfo> _catalog = Array.Empty<InstalledAppInfo>();
     private bool _suppressFilter;
 
+    private Window? _hostWindow;
+
     public AppSuggestBox()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        _hostWindow = Window.GetWindow(this);
+        if (_hostWindow != null)
+        {
+            _hostWindow.PreviewMouseDown += Host_PreviewMouseDown;
+            _hostWindow.Deactivated += Host_Deactivated;
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_hostWindow != null)
+        {
+            _hostWindow.PreviewMouseDown -= Host_PreviewMouseDown;
+            _hostWindow.Deactivated -= Host_Deactivated;
+            _hostWindow = null;
+        }
+    }
+
+    private void Host_Deactivated(object? sender, EventArgs e)
+    {
+        SuggestPopup.IsOpen = false;
+    }
+
+    private void Host_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!SuggestPopup.IsOpen)
+        {
+            return;
+        }
+
+        if (IsMouseOver)
+        {
+            return;
+        }
+
+        if (SuggestPopup.Child is FrameworkElement popupRoot && popupRoot.IsMouseOver)
+        {
+            return;
+        }
+
+        SuggestPopup.IsOpen = false;
     }
 
     public InstalledAppInfo? SelectedApp { get; private set; }

@@ -264,28 +264,20 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Запущенные приложения с окнами" Style="{StaticResource Text.Subtitle}" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button Style="{StaticResource Style.SoftAccentButton}" Click="LaunchSelectedProcessButton_Click" Margin="0,0,6,0" ToolTip="Запустить этот exe у выбранного ученика">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Launch}" Width="12" Height="12" Fill="#1D4ED8" Margin="0,0,6,0"/>
-                                                    <TextBlock Text="Запустить" VerticalAlignment="Center"/>
-                                                </StackPanel>
-                                            </Button>
-                                            <Button Style="{StaticResource Style.SoftDangerButton}" Click="BlockSelectedProcessButton_Click">
+                                        <TextBlock Grid.Column="0" Text="Открытые и свёрнутые окна" Style="{StaticResource Text.Subtitle}" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" Style="{StaticResource Style.SoftDangerButton}" Click="BlockSelectedProcessButton_Click"
+                                                ToolTip="Закрыть это окно и запретить программу до конца урока">
                                                 <StackPanel Orientation="Horizontal">
                                                     <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Lock}" Width="12" Height="12" Fill="#9F1239" Margin="0,0,6,0"/>
-                                                    <TextBlock Text="Блокировать" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Закрыть и запретить" VerticalAlignment="Center"/>
                                                 </StackPanel>
-                                            </Button>
-                                        </StackPanel>
+                                        </Button>
                                     </Grid>
                                     <ListView x:Name="ProcessesListView" Grid.Row="1"
                                               ItemContainerStyle="{StaticResource Style.ProcessRow}">
                                         <ListView.ContextMenu>
                                             <ContextMenu>
-                                                <MenuItem Header="Заблокировать процесс (в RAM)" Click="BlockProcessMenuItem_Click"/>
-                                                <MenuItem Header="Запустить у выбранного ученика" Click="LaunchSelectedProcessButton_Click"/>
+                                                <MenuItem Header="Закрыть и запретить до конца урока" Click="BlockProcessMenuItem_Click"/>
                                             </ContextMenu>
                                         </ListView.ContextMenu>
                                         <ListView.View>
@@ -480,7 +472,7 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Text="Подсказки ученика" Style="{StaticResource Text.Subtitle}"/>
-                                        <TextBlock Text="Обнаруженное ПО выбранного ПК — в запуск или в блоклист"
+                                        <TextBlock Text="Только открытые или свёрнутые окна — в запуск или в блоклист"
                                                    Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

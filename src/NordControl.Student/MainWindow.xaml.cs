@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using NordControl.Core;
+using NordControl.Core.Helpers;
+using NordControl.Core.Policies;
 using NordControl.Protocol;
 using NordControl.Student.Capture;
 using NordControl.Student.Services;
@@ -20,6 +22,8 @@ public partial class MainWindow : Window
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private readonly IScreenCapturer _screenCapturer = new DxgiScreenCapturer();
     private readonly ProcessMonitor _processMonitor = new();
+    private readonly InstalledAppsScanner _appsScanner = new();
+    private bool _joinPanelCollapsed;
 
     private static readonly SolidColorBrush BrushOnline = FreezeRgb(16, 185, 129);
     private static readonly SolidColorBrush BrushReconnect = FreezeRgb(217, 119, 6);
@@ -97,6 +101,15 @@ public partial class MainWindow : Window
 
     private void ConnectButton_Click(object sender, RoutedEventArgs e)
     {
+        var lastName = LastNameTextBox.Text.Trim();
+        var firstName = FirstNameTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(lastName) || string.IsNullOrWhiteSpace(firstName))
+        {
+            ErrorTextBlock.Text = "Введите фамилию и имя";
+            LastNameTextBox.Focus();
+            return;
+        }
+
         var pin = PinCode.Normalize(PinTextBox.Text);
         if (!PinCode.IsWellFormed(pin))
         {
@@ -107,26 +120,34 @@ public partial class MainWindow : Window
 
         PinTextBox.Text = pin;
 
-        ErrorTextBlock.Text = "";
-        StatusCaptionTextBlock.Text = "Поиск учителя";
-        StatusHeaderTextBlock.Text = "Nord Control — поиск учителя";
-        StatusIndicator.Fill = BrushSearch;
-        StatusHalo.Fill = BrushSearch;
         var manualIp = TeacherIpTextBox.Text.Trim();
         if (string.IsNullOrEmpty(manualIp))
         {
             manualIp = null;
         }
+        else if (!LanEndpoints.IsClassroomIpv4(manualIp))
+        {
+            ErrorTextBlock.Text = "IP учителя должен быть из локальной сети";
+            TeacherIpTextBox.Focus();
+            return;
+        }
+
+        ErrorTextBlock.Text = "";
+        StatusCaptionTextBlock.Text = "Поиск учителя";
+        StatusHeaderTextBlock.Text = "Nord Control — поиск учителя";
+        StatusIndicator.Fill = BrushSearch;
+        StatusHalo.Fill = BrushSearch;
 
         _clientCts?.Cancel();
         _clientCts?.Dispose();
         _client?.Dispose();
 
         _clientCts = new CancellationTokenSource();
-        _client = new ClassClient(pin, manualTeacherIp: manualIp)
+        _client = new ClassClient(pin, manualTeacherIp: manualIp, displayName: $"{lastName} {firstName}")
         {
             CaptureFrameCallback = (ct) => _screenCapturer.CaptureFrameAsync(maxDimension: 1280, quality: 70, ct: ct),
-            ProcessListCallback = () => _processMonitor.CollectProcessList(ProcessMonitor.MaxItems)
+            ProcessListCallback = () => _processMonitor.CollectProcessList(ProcessMonitor.MaxItems),
+            InstalledAppsProvider = () => _processMonitor.CollectWindowedApps(_appsScanner.ScanInstalledApps())
         };
         _client.StatusChanged += OnClientStatusChanged;
         _client.Error += OnClientError;
@@ -150,6 +171,8 @@ public partial class MainWindow : Window
                     StatusHalo.Fill = BrushOnline;
                     PinTextBox.IsEnabled = false;
                     TeacherIpTextBox.IsEnabled = false;
+                    LastNameTextBox.IsEnabled = false;
+                    FirstNameTextBox.IsEnabled = false;
                     ConnectButton.IsEnabled = false;
                     CloseButton.ToolTip = "Свернуть в трей";
                     ErrorTextBlock.Text = "";
@@ -157,6 +180,10 @@ public partial class MainWindow : Window
                     {
                         _leaveLessonItem.Enabled = true;
                     }
+                    SetJoinPanelVisible(false);
+                    CollapseButton.Visibility = Visibility.Visible;
+                    CollapseButton.ToolTip = "Свернуть в трей";
+                    Width = 300;
                     break;
 
                 case SessionStatus.Reconnecting:
@@ -177,6 +204,8 @@ public partial class MainWindow : Window
                     StatusHalo.Fill = BrushIdle;
                     PinTextBox.IsEnabled = true;
                     TeacherIpTextBox.IsEnabled = true;
+                    LastNameTextBox.IsEnabled = true;
+                    FirstNameTextBox.IsEnabled = true;
                     ConnectButton.IsEnabled = true;
                     CloseButton.ToolTip = "Закрыть";
                     _hasJoinedClass = false;
@@ -184,6 +213,9 @@ public partial class MainWindow : Window
                     {
                         _leaveLessonItem.Enabled = false;
                     }
+                    SetJoinPanelVisible(true);
+                    CollapseButton.Visibility = Visibility.Collapsed;
+                    Width = 420;
                     break;
             }
         });
@@ -198,6 +230,8 @@ public partial class MainWindow : Window
             {
                 PinTextBox.IsEnabled = true;
                 TeacherIpTextBox.IsEnabled = true;
+                LastNameTextBox.IsEnabled = true;
+                FirstNameTextBox.IsEnabled = true;
                 ConnectButton.IsEnabled = true;
                 StatusCaptionTextBlock.Text = "Ожидание";
                 StatusHeaderTextBlock.Text = "Nord Control — ожидание класса";
@@ -302,8 +336,13 @@ public partial class MainWindow : Window
         Topmost = false;
         PinTextBox.IsEnabled = true;
         TeacherIpTextBox.IsEnabled = true;
+        LastNameTextBox.IsEnabled = true;
+        FirstNameTextBox.IsEnabled = true;
         ConnectButton.IsEnabled = true;
         CloseButton.ToolTip = "Закрыть";
+        CollapseButton.Visibility = Visibility.Collapsed;
+        SetJoinPanelVisible(true);
+        Width = 420;
         StatusCaptionTextBlock.Text = "Ожидание";
         StatusHeaderTextBlock.Text = "Nord Control — ожидание класса";
         StatusIndicator.Fill = BrushIdle;
@@ -318,6 +357,24 @@ public partial class MainWindow : Window
         _clientCts?.Cancel();
         _client?.Dispose();
         _screenCapturer.Dispose();
+    }
+
+    private void SetJoinPanelVisible(bool visible)
+    {
+        JoinPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        _joinPanelCollapsed = !visible;
+    }
+
+    private void CollapseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_hasJoinedClass)
+        {
+            HideToTray();
+            return;
+        }
+
+        SetJoinPanelVisible(JoinPanel.Visibility != Visibility.Visible);
+        Width = JoinPanel.Visibility == Visibility.Visible ? 420 : 300;
     }
 
     private void Capsule_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

@@ -152,6 +152,149 @@ public class ClassClientTests
     }
 
     [Fact]
+    public async Task ManualPublicWanIp_DoesNotJoinEvenIfHubAnnouncesOnLoopback()
+    {
+        var (udpPort, tcpPort) = TestPorts.NextPair();
+        var hub = new ClassHub(udpPort, tcpPort);
+        await hub.StartClass("Лаборатория-WAN", "1234", CancellationToken.None);
+
+        var client = new ClassClient(
+            pin: "1234",
+            udpPort: udpPort,
+            tcpPort: tcpPort,
+            manualTeacherIp: "8.8.8.8"
+        );
+
+        string? receivedError = null;
+        client.Error += err => receivedError = err;
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var runTask = client.RunAsync(cts.Token);
+
+        try
+        {
+            var timeoutAt = DateTime.UtcNow.AddSeconds(2.5);
+            while (receivedError == null && client.Session.Status == SessionStatus.Idle && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Equal(SessionStatus.Idle, client.Session.Status);
+            Assert.NotEqual(SessionStatus.Online, client.Session.Status);
+            Assert.Empty(hub.Students);
+            Assert.Equal("IP учителя должен быть из локальной сети", receivedError);
+        }
+        finally
+        {
+            client.RequestStop();
+            try
+            {
+                await runTask;
+            }
+            catch (OperationCanceledException) { }
+
+            await hub.StopClassAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ManualClassroomIp_ConnectsDirectlyToThatAddress()
+    {
+        var (udpPort, tcpPort) = TestPorts.NextPair();
+        var hub = new ClassHub(udpPort, tcpPort);
+        await hub.StartClass("Лаборатория-direct", "1234", CancellationToken.None);
+
+        var client = new ClassClient(
+            pin: "1234",
+            udpPort: udpPort,
+            tcpPort: tcpPort,
+            manualTeacherIp: "127.0.0.1"
+        );
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var runTask = client.RunAsync(cts.Token);
+
+        try
+        {
+            var timeoutAt = DateTime.UtcNow.AddSeconds(4);
+            while (client.Session.Status != SessionStatus.Online && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Equal(SessionStatus.Online, client.Session.Status);
+            Assert.Equal("127.0.0.1", client.LastTeacherIp);
+        }
+        finally
+        {
+            client.RequestStop();
+            try
+            {
+                await runTask;
+            }
+            catch (OperationCanceledException) { }
+
+            await hub.StopClassAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SessionEnd_DoesNotAutoJoinWhenTeacherStartsNewClass()
+    {
+        var (udpPort, tcpPort) = TestPorts.NextPair();
+        var hub = new ClassHub(udpPort, tcpPort);
+        await hub.StartClass("Класс-1", "1234", CancellationToken.None);
+
+        var client = new ClassClient(
+            pin: "1234",
+            udpPort: udpPort,
+            tcpPort: tcpPort,
+            manualTeacherIp: "127.0.0.1"
+        );
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+        var runTask = client.RunAsync(cts.Token);
+
+        try
+        {
+            var timeoutAt = DateTime.UtcNow.AddSeconds(4);
+            while (client.Session.Status != SessionStatus.Online && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Equal(SessionStatus.Online, client.Session.Status);
+
+            await hub.StopClassAsync();
+
+            timeoutAt = DateTime.UtcNow.AddSeconds(3);
+            while (client.Session.Status != SessionStatus.Idle && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Equal(SessionStatus.Idle, client.Session.Status);
+
+            await hub.StartClass("Класс-2", "1234", CancellationToken.None);
+            await Task.Delay(2000);
+
+            Assert.Equal(SessionStatus.Idle, client.Session.Status);
+            Assert.DoesNotContain(hub.Students, s => s.Status == StudentHubStatus.Online);
+        }
+        finally
+        {
+            client.RequestStop();
+            try
+            {
+                await runTask;
+            }
+            catch (OperationCanceledException) { }
+
+            await hub.StopClassAsync();
+        }
+    }
+
+    [Fact]
     public async Task DiscoveryViaUdpProbe_FindsTeacherAndConnects()
     {
         var hub = new ClassHub(TestUdpPort + 6, TestTcpPort + 6);

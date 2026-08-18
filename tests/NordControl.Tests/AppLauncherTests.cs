@@ -43,6 +43,13 @@ public class AppLauncherTests
     }
 
     [Fact]
+    public void ResolveLaunchPath_keeps_full_path()
+    {
+        var path = @"C:\Program Files (x86)\Steam\steam.exe";
+        Assert.Equal(path, AppLauncher.ResolveLaunchPath(path, "steam.exe"));
+    }
+
+    [Fact]
     public void Launch_returns_false_and_does_not_throw_on_exception()
     {
         var launcher = new AppLauncher(startAction: _ => throw new InvalidOperationException("Failed to start process"));

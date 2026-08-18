@@ -546,7 +546,7 @@ public partial class MainWindow : Window
 
         if (isRunning)
         {
-            StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
+            StatusTextBlock.Text = FormatClassRunningStatus();
             ClassStateBadgeText.Text = "Класс идёт";
             ClassStateDot.Fill = (Brush)FindResource("Brush.Emerald");
             ClassStateBadge.Background = (Brush)FindResource("Brush.EmeraldSoft");
@@ -560,6 +560,14 @@ public partial class MainWindow : Window
         }
 
         RefreshStudentCount();
+    }
+
+    private string FormatClassRunningStatus()
+    {
+        var ips = LanEndpoints.GetLocalUnicastIpv4();
+        var ipText = ips.Count > 0 ? string.Join(", ", ips) : "нет LAN IP";
+        var online = _students.Count(s => s.Status == StudentHubStatus.Online);
+        return $"класс · {ipText} · порт {_hub.TcpPort} · учеников: {online}";
     }
 
     private void OnStudentJoined(ConnectedStudent student)
@@ -586,7 +594,7 @@ public partial class MainWindow : Window
 
             if (_hub.IsRunning)
             {
-                StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
+                StatusTextBlock.Text = FormatClassRunningStatus();
             }
 
             RefreshStudentCount();
@@ -598,7 +606,17 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             var existing = _students.FirstOrDefault(s => s.Id == student.Id);
-            if (existing != null)
+            if (existing == null)
+            {
+                _students.Add(new StudentItemViewModel
+                {
+                    Id = student.Id,
+                    DisplayName = student.DisplayName,
+                    Hostname = student.Hostname,
+                    Status = student.Status
+                });
+            }
+            else
             {
                 existing.DisplayName = student.DisplayName;
                 existing.Hostname = student.Hostname;
@@ -607,7 +625,7 @@ public partial class MainWindow : Window
 
             if (_hub.IsRunning)
             {
-                StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
+                StatusTextBlock.Text = FormatClassRunningStatus();
             }
 
             RefreshStudentCount();
@@ -626,7 +644,7 @@ public partial class MainWindow : Window
 
             if (_hub.IsRunning)
             {
-                StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
+                StatusTextBlock.Text = FormatClassRunningStatus();
             }
 
             RefreshStudentCount();
@@ -756,6 +774,11 @@ public partial class MainWindow : Window
 
     private void AddBlockedApp_Click(object sender, RoutedEventArgs e)
     {
+        _ = AddBlockedAppCoreAsync();
+    }
+
+    private async Task AddBlockedAppCoreAsync()
+    {
         var selected = BlockAppSuggestBox.SelectedApp;
         var exe = selected != null
             ? ProcessNameHelper.Normalize(selected.Exe)
@@ -772,6 +795,15 @@ public partial class MainWindow : Window
         }
 
         BlockAppSuggestBox.Clear();
+        if (_hub.IsRunning)
+        {
+            var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
+            StatusTextBlock.Text = $"«{exe}» добавлена в блоклист и заблокирована у {count} учеников";
+        }
+        else
+        {
+            StatusTextBlock.Text = $"«{exe}» добавлена в блоклист пресета";
+        }
     }
 
     private void RemoveBlockedApp_Click(object sender, RoutedEventArgs e)
@@ -870,25 +902,6 @@ public partial class MainWindow : Window
         {
             StatusTextBlock.Text = $"Процесс «{exe}» добавлен в список блокировок пресета";
         }
-    }
-
-    private async void LaunchSelectedProcessButton_Click(object sender, RoutedEventArgs e)
-    {
-        var proc = GetSelectedProcess();
-        if (proc == null || string.IsNullOrWhiteSpace(proc.Exe))
-        {
-            MessageBox.Show(this, "Выберите процесс из таблицы", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        if (!_hub.IsRunning || string.IsNullOrEmpty(_hub.SelectedStudentId))
-        {
-            MessageBox.Show(this, "Выберите ученика из списка слева", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var sent = await _hub.SendLaunchAppAsync(_hub.SelectedStudentId, proc.Exe, null);
-        StatusTextBlock.Text = sent ? $"Запущено «{proc.Exe}» у выбранного ученика" : "Ошибка отправки команды запуска";
     }
 
     private void AddHintToQuickApps_Click(object sender, RoutedEventArgs e)

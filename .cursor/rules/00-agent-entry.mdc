@@ -13,4 +13,4 @@ alwaysApply: true
 
 **n субагентов:** 1 implementer одновременно (`nord-stage3-implementer`). 4 волны. После волны — `nord-stage3-reviewer`. В конце — `nord-stage3-final-reviewer`. Файлы: `.cursor/agents/`.
 
-**STOP:** MSI installer, Windows Service, автозапуск без сессии, облачная телеметрия, этап 4. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`.
+**STOP:** MSI installer, Windows Service, автозапуск без сессии, облачная телеметрия, этап 4. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`. «Обнови экзешники» / залить Teacher+Student на GitHub — `.cursor/rules/github-exes.mdc`.

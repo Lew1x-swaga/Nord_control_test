@@ -40,6 +40,17 @@ public class ProcessListTests
 
         client.ProcessListCallback = () => expectedMsg;
 
+        string? receivedStudentId = null;
+        WireMessage? receivedMsg = null;
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        hub.ProcessListReceived += (sId, msg) =>
+        {
+            receivedStudentId = sId;
+            receivedMsg = msg;
+            tcs.TrySetResult(true);
+        };
+
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var run = Task.Run(() => client.RunAsync(cts.Token));
 
@@ -52,18 +63,7 @@ public class ProcessListTests
         Assert.Equal(SessionStatus.Online, client.Session.Status);
         var studentId = client.Session.StudentId!;
 
-        string? receivedStudentId = null;
-        WireMessage? receivedMsg = null;
-        var tcs = new TaskCompletionSource<bool>();
-
-        hub.ProcessListReceived += (sId, msg) =>
-        {
-            receivedStudentId = sId;
-            receivedMsg = msg;
-            tcs.TrySetResult(true);
-        };
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(4000));
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(1000));
         Assert.Same(tcs.Task, completed);
 
         Assert.Equal(studentId, receivedStudentId);

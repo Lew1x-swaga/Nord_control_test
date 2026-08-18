@@ -194,6 +194,25 @@ public class RamAppBlocker : IAppBlocker
 
     public static string NormalizeExeName(string raw) => ProcessNameHelper.Normalize(raw);
 
+    private static void KillByPid(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                process.Kill();
+            }
+        }
+        catch
+        {
+        }
+    }
+
     private static IEnumerable<ProcessCandidate> DefaultProcessEnumerator()
     {
         var result = new List<ProcessCandidate>();
@@ -222,18 +241,12 @@ public class RamAppBlocker : IAppBlocker
                 }
 
                 var exeName = ProcessNameHelper.Normalize(rawName);
+                var pid = p.Id;
 
                 result.Add(new ProcessCandidate(
-                    Pid: p.Id,
+                    Pid: pid,
                     ExeName: exeName,
-                    KillAction: () =>
-                    {
-                        try
-                        {
-                            p.Kill();
-                        }
-                        catch { }
-                    }
+                    KillAction: () => KillByPid(pid)
                 ));
             }
             catch

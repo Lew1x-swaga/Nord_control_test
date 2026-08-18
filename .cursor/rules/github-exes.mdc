@@ -1,0 +1,44 @@
+---
+description: Обновить Teacher/Student exe на GitHub Releases. Триггер — «обнови экзешники», «залей exe», «update github exes».
+alwaysApply: true
+---
+
+# GitHub exe (Teacher + Student)
+
+Запускай **только** если пользователь просит обновить exe на GitHub / «обнови экзешники» / залить Teacher и Student. Иначе не публикуй.
+
+Цель: на чистой Windows 10/11 x64 — скачал по ссылке, **двойной клик**, без SDK и без командной строки.
+
+## Что сделать
+
+1. Собрать **два** self-contained single-file **WinExe** (`win-x64`). Не консоль (`OutputType=WinExe`).
+2. Файлы: `NordControl.Teacher.exe`, `NordControl.Student.exe`.
+3. Новый тег `vX.Y.Z` (посмотреть `git tag` / latest release, бампнуть patch, если пользователь не назвал версию). Сделать этот релиз **latest**.
+4. Репозиторий: `Lew1x-swaga/Nord_control_test` (должен быть **public**, иначе ссылки с чужого ПК не откроются).
+5. README уже содержит прямые ссылки — не менять, если URL те же:
+   - `https://github.com/Lew1x-swaga/Nord_control_test/releases/latest/download/NordControl.Teacher.exe`
+   - `https://github.com/Lew1x-swaga/Nord_control_test/releases/latest/download/NordControl.Student.exe`
+6. Проверить HEAD/GET → **200** по обеим latest-ссылкам. Вернуть пользователю эти две ссылки.
+
+## Сборка (из корня репо)
+
+SDK, если `dotnet` не в PATH: `$env:DOTNET_ROOT='C:\Users\Master\.dotnet'; $env:PATH="$env:DOTNET_ROOT;$env:PATH"`.
+
+```powershell
+dotnet publish src/NordControl.Teacher/NordControl.Teacher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o dist/teacher
+dotnet publish src/NordControl.Student/NordControl.Student.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o dist/student
+```
+
+Teacher и Student **по очереди** (параллельный publish ломает `obj`).
+
+## Залить
+
+`dist/` в git **не** коммитить (gitignore). Исходники коммитить/пушить только если пользователь просил.
+
+Предпочтительно локальный publish + `gh release create vX.Y.Z` с двумя exe (не ждать Actions). Если тег уже есть — бампнуть, не перетирать чужой тег без просьбы.
+
+`gh auth login` может не пройти (нет `read:org`). Тогда `git credential fill` → `GH_TOKEN` для `gh release create`. **Токен в чат не писать.**
+
+```powershell
+gh release create vX.Y.Z dist/teacher/NordControl.Teacher.exe dist/student/NordControl.Student.exe --repo Lew1x-swaga/Nord_control_test --target main --latest --title "Nord Control vX.Y.Z"
+```

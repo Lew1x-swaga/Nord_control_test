@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Nord Control — ученик"
-        Width="520"
+        Width="420"
         SizeToContent="Height"
         WindowStartupLocation="Manual"
         WindowStyle="None"
@@ -19,7 +19,7 @@
         SnapsToDevicePixels="True"
         Topmost="False"
         ShowInTaskbar="True">
-    <Border Margin="10" Padding="14,12" CornerRadius="16"
+    <Border Margin="10" Padding="12,10" CornerRadius="16"
             Background="{StaticResource Brush.Surface}"
             BorderBrush="{StaticResource Brush.Border}"
             BorderThickness="1"
@@ -31,12 +31,12 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
@@ -55,46 +55,63 @@
                 <TextBlock x:Name="ErrorTextBlock" Grid.Column="1" Text="" FontSize="11"
                            Foreground="{StaticResource Brush.Rose}" FontWeight="Medium"
                            VerticalAlignment="Center" Margin="8,0,8,0"
-                           TextTrimming="CharacterEllipsis" MaxWidth="150"/>
-                <Button x:Name="CloseButton" Grid.Column="2" Style="{StaticResource Style.IconButton}" Width="28" Height="28" MinHeight="28"
+                           TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+                <Button x:Name="CollapseButton" Grid.Column="2" Style="{StaticResource Style.IconButton}"
+                        Width="28" Height="28" MinHeight="28" Margin="0,0,4,0"
+                        Click="CollapseButton_Click" ToolTip="Свернуть плашку" Visibility="Collapsed">
+                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Minus}" Width="12" Height="12"/>
+                </Button>
+                <Button x:Name="CloseButton" Grid.Column="3" Style="{StaticResource Style.IconButton}" Width="28" Height="28" MinHeight="28"
                         Click="CloseButton_Click" ToolTip="Закрыть">
                     <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Close}" Width="12" Height="12"/>
                 </Button>
             </Grid>
 
-            <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <TextBlock Text="PIN" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBox x:Name="PinTextBox" Width="112" Height="32" MaxLength="6" FontSize="16" FontWeight="Bold"
-                             FontFamily="Consolas, Cascadia Mono, Segoe UI" HorizontalContentAlignment="Center"
-                             CharacterCasing="Upper" Tag="A2B3C4"/>
-                </StackPanel>
-                <ToggleButton x:Name="AdvancedToggle" Grid.Column="1" Style="{StaticResource Style.LinkToggle}"
-                              Content="Указать IP учителя вручную" HorizontalAlignment="Left" VerticalAlignment="Center"
-                              Checked="AdvancedToggle_Changed" Unchecked="AdvancedToggle_Changed"/>
-                <Button x:Name="ConnectButton" Grid.Column="2" Style="{StaticResource Style.AccentButton}"
-                        Height="32" Padding="16,0" Click="ConnectButton_Click" Content="Подключиться"/>
-            </Grid>
-
-            <Border x:Name="AdvancedPanel" Grid.Row="2" Visibility="Collapsed" Margin="0,10,0,0"
-                    Background="{StaticResource Brush.SurfaceMuted}" CornerRadius="8" Padding="10,8"
-                    BorderBrush="{StaticResource Brush.Border}" BorderThickness="1">
+            <StackPanel x:Name="JoinPanel" Grid.Row="1" Margin="0,10,0,0">
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="LastNameTextBox" Grid.Column="0" Height="32" MinHeight="32" Margin="0,0,4,0"
+                             Tag="Фамилия"/>
+                    <TextBox x:Name="FirstNameTextBox" Grid.Column="1" Height="32" MinHeight="32" Margin="4,0,0,0"
+                             Tag="Имя"/>
+                </Grid>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="IP учителя" Style="{StaticResource Text.Caption}"
-                               VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBox x:Name="TeacherIpTextBox" Grid.Column="1" Height="28" MinHeight="28"
-                             Tag="192.168.x.x" ToolTip="IP учителя (опционально, если автопоиск недоступен)"/>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBlock Text="PIN" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox x:Name="PinTextBox" Width="112" Height="32" MaxLength="6" FontSize="16" FontWeight="Bold"
+                                 FontFamily="Consolas, Cascadia Mono, Segoe UI" HorizontalContentAlignment="Center"
+                                 CharacterCasing="Upper" Tag="A2B3C4"/>
+                    </StackPanel>
+                    <ToggleButton x:Name="AdvancedToggle" Grid.Column="1" Style="{StaticResource Style.LinkToggle}"
+                                  Content="Указать IP учителя" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                  Checked="AdvancedToggle_Changed" Unchecked="AdvancedToggle_Changed"
+                                  ToolTip="PIN всё равно нужен — IP только если класс не находится сам"/>
+                    <Button x:Name="ConnectButton" Grid.Column="2" Style="{StaticResource Style.AccentButton}"
+                            Height="32" Padding="16,0" Click="ConnectButton_Click" Content="Подключиться"/>
                 </Grid>
-            </Border>
+                <Border x:Name="AdvancedPanel" Visibility="Collapsed" Margin="0,10,0,0"
+                        Background="{StaticResource Brush.SurfaceMuted}" CornerRadius="8" Padding="10,8"
+                        BorderBrush="{StaticResource Brush.Border}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="IP учителя" Style="{StaticResource Text.Caption}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBox x:Name="TeacherIpTextBox" Grid.Column="1" Height="28" MinHeight="28"
+                                 Tag="192.168.x.x" ToolTip="Не отменяет PIN. Нужен, если автопоиск по Wi‑Fi не сработал"/>
+                    </Grid>
+                </Border>
+            </StackPanel>
         </Grid>
     </Border>
 </Window>
