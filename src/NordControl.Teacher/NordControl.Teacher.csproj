@@ -11,7 +11,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Page Include="..\NordControl.Themes\Theme.xaml" Link="Themes\Theme.xaml" />
+  </ItemGroup>
 
 </Project>

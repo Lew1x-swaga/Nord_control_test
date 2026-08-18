@@ -14,6 +14,8 @@
 [Rr]elease/
 [Pp]ublish/
 publish/
+dist/
+
 x64/
 x86/
 build/

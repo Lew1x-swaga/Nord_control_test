@@ -17,4 +17,8 @@
     <NoWarn>$(NoWarn);WFAC010</NoWarn>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Page Include="..\NordControl.Themes\Theme.xaml" Link="Themes\Theme.xaml" />
+  </ItemGroup>
+
 </Project>

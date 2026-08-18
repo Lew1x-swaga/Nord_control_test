@@ -7,6 +7,10 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using NordControl.Core;
@@ -16,11 +20,40 @@ using NordControl.Protocol;
 
 namespace NordControl.Teacher;
 
+public sealed class ProcessRowViewModel
+{
+    public ProcessRowViewModel(ProcessItemInfo item, bool isActive)
+    {
+        Item = item;
+        IsActive = isActive;
+    }
+
+    public ProcessItemInfo Item { get; }
+    public string Exe => Item.Exe;
+    public int Pid => Item.Pid;
+    public string Title => Item.Title;
+    public bool IsActive { get; }
+}
+
 public class StudentItemViewModel : INotifyPropertyChanged
 {
+    private static readonly SolidColorBrush OnlineFg = Freeze(16, 185, 129);
+    private static readonly SolidColorBrush ReconnectFg = Freeze(217, 119, 6);
+    private static readonly SolidColorBrush OfflineFg = Freeze(148, 163, 184);
+    private static readonly SolidColorBrush OnlineBg = Freeze(236, 253, 245);
+    private static readonly SolidColorBrush ReconnectBg = Freeze(254, 243, 199);
+    private static readonly SolidColorBrush OfflineBg = Freeze(241, 245, 249);
+
     private string _displayName = string.Empty;
     private string _hostname = string.Empty;
     private StudentHubStatus _status;
+
+    private static SolidColorBrush Freeze(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
     public string Id { get; init; } = string.Empty;
 
@@ -75,16 +108,16 @@ public class StudentItemViewModel : INotifyPropertyChanged
 
     public Brush StatusForeground => Status switch
     {
-        StudentHubStatus.Online => new SolidColorBrush(Color.FromRgb(16, 185, 129)),       // Emerald-500
-        StudentHubStatus.Reconnecting => new SolidColorBrush(Color.FromRgb(217, 119, 6)),  // Amber-600
-        _ => new SolidColorBrush(Color.FromRgb(148, 163, 184))                             // Slate-400
+        StudentHubStatus.Online => OnlineFg,
+        StudentHubStatus.Reconnecting => ReconnectFg,
+        _ => OfflineFg
     };
 
     public Brush StatusBackground => Status switch
     {
-        StudentHubStatus.Online => new SolidColorBrush(Color.FromRgb(236, 253, 245)),      // Emerald-50
-        StudentHubStatus.Reconnecting => new SolidColorBrush(Color.FromRgb(254, 243, 199)),// Amber-50
-        _ => new SolidColorBrush(Color.FromRgb(241, 245, 249))                             // Slate-100
+        StudentHubStatus.Online => OnlineBg,
+        StudentHubStatus.Reconnecting => ReconnectBg,
+        _ => OfflineBg
     };
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -99,13 +132,19 @@ public partial class MainWindow : Window
 {
     private readonly ClassHub _hub;
     private readonly ObservableCollection<StudentItemViewModel> _students = new();
-    private readonly ObservableCollection<ProcessItemInfo> _processes = new();
+    private readonly ObservableCollection<ProcessRowViewModel> _processes = new();
     private readonly ObservableCollection<InstalledAppInfo> _quickApps = new();
     private readonly ObservableCollection<string> _blockedApps = new();
     private readonly ObservableCollection<InstalledAppInfo> _selectedStudentHints = new();
     private readonly ConcurrentDictionary<string, List<InstalledAppInfo>> _hintsByStudent = new();
 
     private bool _isClosingInProgress;
+    private string _studentFilter = string.Empty;
+    private bool _streamFullscreen;
+    private WindowState _restoreWindowState = WindowState.Normal;
+    private int _framesInWindow;
+    private ulong _fpsWindowStartMs;
+    private int _currentFps;
 
     public MainWindow()
     {
@@ -120,6 +159,7 @@ public partial class MainWindow : Window
         _hub.InstalledHintsReceived += OnInstalledHintsReceived;
 
         StudentsListBox.ItemsSource = _students;
+        CollectionViewSource.GetDefaultView(_students).Filter = FilterStudent;
         ProcessesListView.ItemsSource = _processes;
         QuickAppsListBox.ItemsSource = _quickApps;
         BlockedAppsListBox.ItemsSource = _blockedApps;
@@ -128,6 +168,141 @@ public partial class MainWindow : Window
         LoadPreset();
         GenerateNewPin();
         UpdateUiState(isRunning: false);
+        RefreshStudentCount();
+
+        LaunchAppSuggestBox.Placeholder = "Найти программу для запуска…";
+        BlockAppSuggestBox.Placeholder = "Найти программу для блокировки…";
+        LaunchAppSuggestBox.SuggestionChosen += app =>
+        {
+            if (!string.IsNullOrWhiteSpace(app.LaunchTarget))
+            {
+                NewAppPathTextBox.Text = app.LaunchTarget;
+            }
+        };
+        RefreshAppSuggestions();
+    }
+
+    private bool FilterStudent(object obj)
+    {
+        if (obj is not StudentItemViewModel student)
+            return false;
+
+        if (!string.IsNullOrEmpty(_hub.SelectedStudentId) && student.Id == _hub.SelectedStudentId)
+            return true;
+
+        if (string.IsNullOrWhiteSpace(_studentFilter))
+            return true;
+
+        return student.DisplayName.Contains(_studentFilter, StringComparison.OrdinalIgnoreCase)
+            || student.Hostname.Contains(_studentFilter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void StudentSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _studentFilter = StudentSearchTextBox.Text.Trim();
+        CollectionViewSource.GetDefaultView(_students).Refresh();
+    }
+
+    private void RefreshStudentCount()
+    {
+        var online = _students.Count(s => s.Status == StudentHubStatus.Online);
+        StudentCountTextBlock.Text = $"Онлайн: {online} / Всего: {_students.Count}";
+    }
+
+    private async void CopyPinButton_Click(object sender, RoutedEventArgs e)
+    {
+        var pin = PinTextBlock.Text;
+        if (string.IsNullOrWhiteSpace(pin))
+            return;
+
+        try
+        {
+            Clipboard.SetText(pin);
+        }
+        catch
+        {
+            return;
+        }
+
+        var tip = new ToolTip
+        {
+            Content = "PIN скопирован",
+            PlacementTarget = CopyPinButton,
+            Placement = PlacementMode.Bottom,
+            StaysOpen = false
+        };
+        CopyPinButton.ToolTip = tip;
+        tip.IsOpen = true;
+        await Task.Delay(1200);
+        tip.IsOpen = false;
+        CopyPinButton.ToolTip = "Копировать PIN в буфер обмена";
+    }
+
+    private void StreamFullscreenButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleStreamFullscreen();
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _streamFullscreen)
+        {
+            ToggleStreamFullscreen();
+            e.Handled = true;
+        }
+    }
+
+    private void ToggleStreamFullscreen()
+    {
+        _streamFullscreen = !_streamFullscreen;
+        StreamFullscreenOverlay.Visibility = _streamFullscreen ? Visibility.Visible : Visibility.Collapsed;
+        if (_streamFullscreen)
+        {
+            _restoreWindowState = WindowState;
+            WindowState = WindowState.Maximized;
+            FullscreenImage.Source = ScreenImage.Source;
+            FullscreenMetaTextBlock.Text = StreamMetaTextBlock.Text;
+        }
+        else
+        {
+            WindowState = _restoreWindowState;
+            FullscreenImage.Source = null;
+        }
+    }
+
+    private void ExitStreamFullscreenIfNeeded()
+    {
+        if (_streamFullscreen)
+            ToggleStreamFullscreen();
+    }
+
+    private void ResetStreamMeta()
+    {
+        _framesInWindow = 0;
+        _fpsWindowStartMs = 0;
+        _currentFps = 0;
+        StreamMetaTextBlock.Text = "— · — FPS";
+        FullscreenMetaTextBlock.Text = "— · — FPS";
+    }
+
+    private void UpdateStreamMeta(uint width, uint height, ulong timestampMs)
+    {
+        if (_fpsWindowStartMs == 0)
+            _fpsWindowStartMs = timestampMs;
+
+        _framesInWindow++;
+        var elapsed = timestampMs >= _fpsWindowStartMs ? timestampMs - _fpsWindowStartMs : 0UL;
+        if (elapsed >= 1000)
+        {
+            _currentFps = (int)Math.Round(_framesInWindow * 1000.0 / Math.Max(1UL, elapsed));
+            _framesInWindow = 0;
+            _fpsWindowStartMs = timestampMs;
+        }
+
+        var text = $"{width}x{height} · {_currentFps} FPS";
+        StreamMetaTextBlock.Text = text;
+        if (_streamFullscreen)
+            FullscreenMetaTextBlock.Text = text;
     }
 
     private void LoadPreset()
@@ -178,8 +353,7 @@ public partial class MainWindow : Window
 
     private void GenerateNewPin()
     {
-        var pin = Random.Shared.Next(ProtocolConstants.PinMin, ProtocolConstants.PinMax + 1).ToString();
-        PinTextBlock.Text = pin;
+        PinTextBlock.Text = PinCode.Generate();
     }
 
     private void NewPinButton_Click(object sender, RoutedEventArgs e)
@@ -199,7 +373,12 @@ public partial class MainWindow : Window
             ClassNameTextBox.Text = className;
         }
 
-        var pin = PinTextBlock.Text.Trim();
+        var pin = PinCode.Normalize(PinTextBlock.Text);
+        if (!PinCode.IsWellFormed(pin))
+        {
+            GenerateNewPin();
+            pin = PinTextBlock.Text;
+        }
 
         try
         {
@@ -224,18 +403,21 @@ public partial class MainWindow : Window
         {
             Dispatcher.Invoke(() =>
             {
+                ExitStreamFullscreenIfNeeded();
                 StudentsListBox.SelectedItem = null;
                 PlaceholderBorder.Visibility = Visibility.Visible;
                 StudentDetailGrid.Visibility = Visibility.Collapsed;
                 ScreenImage.Source = null;
+                FullscreenImage.Source = null;
                 _processes.Clear();
                 _selectedStudentHints.Clear();
+                ResetStreamMeta();
             });
             UpdateUiState(isRunning: false);
         }
     }
 
-    private async void StudentsListBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private async void StudentsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var selected = StudentsListBox.SelectedItem as StudentItemViewModel;
         if (selected == null || !_hub.IsRunning)
@@ -243,10 +425,13 @@ public partial class MainWindow : Window
             PlaceholderBorder.Visibility = Visibility.Visible;
             StudentDetailGrid.Visibility = Visibility.Collapsed;
             ScreenImage.Source = null;
+            FullscreenImage.Source = null;
             _processes.Clear();
             _selectedStudentHints.Clear();
             ActiveAppTextBlock.Text = "—";
+            ResetStreamMeta();
             await _hub.SelectStudentAsync(null);
+            RefreshAppSuggestions();
             return;
         }
 
@@ -254,11 +439,12 @@ public partial class MainWindow : Window
         StudentDetailGrid.Visibility = Visibility.Visible;
         SelectedStudentNameTextBlock.Text = selected.DisplayName;
         ScreenImage.Source = null;
+        FullscreenImage.Source = null;
         WaitingForFrameTextBlock.Visibility = Visibility.Visible;
         _processes.Clear();
         ActiveAppTextBlock.Text = "—";
+        ResetStreamMeta();
 
-        // Refresh hints for selected student
         _selectedStudentHints.Clear();
         if (_hintsByStudent.TryGetValue(selected.Id, out var hints))
         {
@@ -269,6 +455,7 @@ public partial class MainWindow : Window
         }
 
         await _hub.SelectStudentAsync(selected.Id);
+        RefreshAppSuggestions();
     }
 
     private void OnScreenFrameReceived(string studentId, JpegFrame frame)
@@ -296,7 +483,10 @@ public partial class MainWindow : Window
                     if (studentId == _hub.SelectedStudentId)
                     {
                         ScreenImage.Source = bitmap;
+                        if (_streamFullscreen)
+                            FullscreenImage.Source = bitmap;
                         WaitingForFrameTextBlock.Visibility = Visibility.Collapsed;
+                        UpdateStreamMeta(frame.Width, frame.Height, frame.TimestampMs);
                     }
                 });
             }
@@ -319,7 +509,9 @@ public partial class MainWindow : Window
             {
                 foreach (var item in msg.Items)
                 {
-                    _processes.Add(item);
+                    var isActive = !string.IsNullOrWhiteSpace(msg.ActiveExe)
+                        && string.Equals(item.Exe, msg.ActiveExe, StringComparison.OrdinalIgnoreCase);
+                    _processes.Add(new ProcessRowViewModel(item, isActive));
                 }
             }
 
@@ -340,6 +532,7 @@ public partial class MainWindow : Window
                 {
                     _selectedStudentHints.Add(app);
                 }
+                RefreshAppSuggestions();
             }
         });
     }
@@ -354,11 +547,19 @@ public partial class MainWindow : Window
         if (isRunning)
         {
             StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
+            ClassStateBadgeText.Text = "Класс идёт";
+            ClassStateDot.Fill = (Brush)FindResource("Brush.Emerald");
+            ClassStateBadge.Background = (Brush)FindResource("Brush.EmeraldSoft");
         }
         else
         {
             StatusTextBlock.Text = "класс остановлен";
+            ClassStateBadgeText.Text = "Остановлен";
+            ClassStateDot.Fill = (Brush)FindResource("Brush.TextMuted");
+            ClassStateBadge.Background = (Brush)FindResource("Brush.SurfaceMuted");
         }
+
+        RefreshStudentCount();
     }
 
     private void OnStudentJoined(ConnectedStudent student)
@@ -387,6 +588,8 @@ public partial class MainWindow : Window
             {
                 StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
             }
+
+            RefreshStudentCount();
         });
     }
 
@@ -406,6 +609,8 @@ public partial class MainWindow : Window
             {
                 StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
             }
+
+            RefreshStudentCount();
         });
     }
 
@@ -423,16 +628,56 @@ public partial class MainWindow : Window
             {
                 StatusTextBlock.Text = $"класс запущен · порт {_hub.TcpPort} · учеников: {_students.Count(s => s.Status == StudentHubStatus.Online)}";
             }
+
+            RefreshStudentCount();
         });
     }
 
-    // --- Quick Apps Section Handlers ---
+    private void RefreshAppSuggestions()
+    {
+        IEnumerable<InstalledAppInfo> preferred = _selectedStudentHints;
+        if (_selectedStudentHints.Count == 0)
+        {
+            preferred = _hintsByStudent.Values.SelectMany(list => list);
+        }
+
+        var catalog = AppSuggestionFilter.Merge(
+            preferred,
+            _quickApps,
+            AppSuggestionCatalog.CommonApps);
+
+        LaunchAppSuggestBox.SetCatalog(catalog);
+        BlockAppSuggestBox.SetCatalog(catalog);
+    }
 
     private void AddQuickApp_Click(object sender, RoutedEventArgs e)
     {
-        var name = NewAppNameTextBox.Text.Trim();
-        var exe = NewAppExeTextBox.Text.Trim();
+        var selected = LaunchAppSuggestBox.SelectedApp;
+        string name;
+        string exe;
         var path = NewAppPathTextBox.Text.Trim();
+
+        if (selected != null)
+        {
+            name = selected.Name;
+            exe = selected.Exe;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = selected.LaunchTarget ?? string.Empty;
+            }
+        }
+        else
+        {
+            var typed = LaunchAppSuggestBox.QueryText;
+            if (string.IsNullOrWhiteSpace(typed))
+            {
+                MessageBox.Show(this, "Выберите программу из списка или введите имя exe", "Добавление программы", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            exe = ProcessNameHelper.Normalize(typed);
+            name = Path.GetFileNameWithoutExtension(exe);
+        }
 
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(exe))
         {
@@ -442,18 +687,20 @@ public partial class MainWindow : Window
 
         exe = ProcessNameHelper.Normalize(exe);
 
-        _quickApps.Add(new InstalledAppInfo
+        if (!_quickApps.Any(a => string.Equals(a.Exe, exe, StringComparison.OrdinalIgnoreCase)))
         {
-            Name = name,
-            Exe = exe,
-            LaunchTarget = string.IsNullOrWhiteSpace(path) ? null : path
-        });
+            _quickApps.Add(new InstalledAppInfo
+            {
+                Name = name,
+                Exe = exe,
+                LaunchTarget = string.IsNullOrWhiteSpace(path) ? null : path
+            });
+            SavePreset();
+        }
 
-        NewAppNameTextBox.Clear();
-        NewAppExeTextBox.Clear();
+        LaunchAppSuggestBox.Clear();
         NewAppPathTextBox.Clear();
-
-        SavePreset();
+        RefreshAppSuggestions();
     }
 
     private void RemoveQuickApp_Click(object sender, RoutedEventArgs e)
@@ -507,11 +754,12 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = $"Запущено «{app.Name}» у {count} учеников";
     }
 
-    // --- RAM Block List Handlers ---
-
     private void AddBlockedApp_Click(object sender, RoutedEventArgs e)
     {
-        var exe = ProcessNameHelper.Normalize(NewBlockedExeTextBox.Text);
+        var selected = BlockAppSuggestBox.SelectedApp;
+        var exe = selected != null
+            ? ProcessNameHelper.Normalize(selected.Exe)
+            : ProcessNameHelper.Normalize(BlockAppSuggestBox.QueryText);
         if (string.IsNullOrWhiteSpace(exe))
         {
             return;
@@ -523,7 +771,7 @@ public partial class MainWindow : Window
             SavePreset();
         }
 
-        NewBlockedExeTextBox.Clear();
+        BlockAppSuggestBox.Clear();
     }
 
     private void RemoveBlockedApp_Click(object sender, RoutedEventArgs e)
@@ -587,9 +835,20 @@ public partial class MainWindow : Window
         await BlockSelectedProcessCoreAsync();
     }
 
+    private ProcessItemInfo? GetSelectedProcess()
+    {
+        return ProcessesListView.SelectedItem switch
+        {
+            ProcessRowViewModel row => row.Item,
+            ProcessItemInfo item => item,
+            _ => null
+        };
+    }
+
     private async Task BlockSelectedProcessCoreAsync()
     {
-        if (ProcessesListView.SelectedItem is not ProcessItemInfo proc || string.IsNullOrWhiteSpace(proc.Exe))
+        var proc = GetSelectedProcess();
+        if (proc == null || string.IsNullOrWhiteSpace(proc.Exe))
         {
             MessageBox.Show(this, "Выберите процесс из таблицы", "Блокировка процесса", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -613,7 +872,24 @@ public partial class MainWindow : Window
         }
     }
 
-    // --- Hints Section Handlers ---
+    private async void LaunchSelectedProcessButton_Click(object sender, RoutedEventArgs e)
+    {
+        var proc = GetSelectedProcess();
+        if (proc == null || string.IsNullOrWhiteSpace(proc.Exe))
+        {
+            MessageBox.Show(this, "Выберите процесс из таблицы", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!_hub.IsRunning || string.IsNullOrEmpty(_hub.SelectedStudentId))
+        {
+            MessageBox.Show(this, "Выберите ученика из списка слева", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var sent = await _hub.SendLaunchAppAsync(_hub.SelectedStudentId, proc.Exe, null);
+        StatusTextBlock.Text = sent ? $"Запущено «{proc.Exe}» у выбранного ученика" : "Ошибка отправки команды запуска";
+    }
 
     private void AddHintToQuickApps_Click(object sender, RoutedEventArgs e)
     {
@@ -633,6 +909,7 @@ public partial class MainWindow : Window
             });
             SavePreset();
             StatusTextBlock.Text = $"«{hint.Name}» добавлена в быстрый запуск";
+            RefreshAppSuggestions();
         }
     }
 

@@ -2,17 +2,25 @@
 
 Лицензий в MVP нет. Онлайн-активации нет (кабинет должен жить без интернета).
 
-## Сейчас — две машины / loopback
+## Сейчас — GitHub Releases (два exe)
 
-Сборка:
+Обычный путь для школы и для теста на чистом ПК:
 
-- `NordControl.Teacher` и `NordControl.Student` как два exe.
-- На машине разработки: `dotnet run`.
-- На второй машине без SDK: `dotnet publish -c Release -r win-x64 --self-contained true` соответствующей роли, копировать папку.
+1. Страница репозитория → блок **Скачать** в README, либо [Releases](https://github.com/Lew1x-swaga/Nord_control_test/releases/latest).
+2. Учитель качает `NordControl.Teacher.exe`, ученик — `NordControl.Student.exe`.
+3. Двойной клик. .NET SDK на машине не нужен (self-contained, один файл).
+4. Первый запуск Teacher: Windows спросит брандмауэр — разрешить **частные** сети.
+
+Сборка на машине разработки (то же, что кладёт CI в релиз):
+
+```powershell
+dotnet publish src/NordControl.Teacher -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o dist/teacher
+dotnet publish src/NordControl.Student -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o dist/student
+```
+
+Тег `v*` на GitHub запускает `.github/workflows/release.yml` и прикрепляет оба exe к релизу.
 
 Роль не угадывается: запускается конкретный exe.
-
-Первый запуск Teacher: Windows спросит брандмауэр — разрешить **частные** сети. Если забыли: см. команду в `AGENT_PLAN.md`.
 
 ## Потом — один Setup (этап 4, не сейчас)
 

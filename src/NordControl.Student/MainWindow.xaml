@@ -5,64 +5,96 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Nord Control — ученик"
-        Height="115" Width="540"
+        Width="520"
+        SizeToContent="Height"
         WindowStartupLocation="Manual"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
         ResizeMode="NoResize"
-        Background="#F8FAFC"
-        FontFamily="Segoe UI"
-        Topmost="False">
-    <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8" Margin="6" Padding="12,8">
+        FontFamily="Segoe UI Variable, Segoe UI"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        Topmost="False"
+        ShowInTaskbar="True">
+    <Border Margin="10" Padding="14,12" CornerRadius="16"
+            Background="{StaticResource Brush.Surface}"
+            BorderBrush="{StaticResource Brush.Border}"
+            BorderThickness="1"
+            MouseLeftButtonDown="Capsule_MouseLeftButtonDown">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="18" ShadowDepth="2" Direction="270" Opacity="0.16" Color="#0F172A"/>
+        </Border.Effect>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Status Banner Header -->
-            <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid Grid.Row="0" Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Ellipse x:Name="StatusIndicator" Width="10" Height="10" Fill="#94A3B8" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="StatusHeaderTextBlock" Text="Nord Control — ожидание класса" FontWeight="SemiBold" FontSize="13" Foreground="#1E293B" VerticalAlignment="Center"/>
+                    <Grid Width="14" Height="14" Margin="0,0,10,0" VerticalAlignment="Center">
+                        <Ellipse x:Name="StatusHalo" Width="14" Height="14" Fill="#94A3B8" Opacity="0.25"/>
+                        <Ellipse x:Name="StatusIndicator" Width="8" Height="8" Fill="#94A3B8"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                    <StackPanel>
+                        <TextBlock x:Name="StatusCaptionTextBlock" Text="Ожидание" Style="{StaticResource Text.Caption}"/>
+                        <TextBlock x:Name="StatusHeaderTextBlock" Text="Nord Control — ожидание класса"
+                                   Style="{StaticResource Text.Subtitle}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
                 </StackPanel>
-
-                <TextBlock x:Name="ErrorTextBlock" Grid.Column="1" Text="" FontSize="11" Foreground="#EF4444" FontWeight="Medium" VerticalAlignment="Center" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="180"/>
-            </Grid>
-
-            <!-- Control Bar (PIN, IP, Connect button) -->
-            <Grid Grid.Row="1" VerticalAlignment="Center">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- PIN Input -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <TextBlock Text="PIN:" FontSize="12" Foreground="#64748B" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox x:Name="PinTextBox" Width="68" Height="28" MaxLength="4" FontSize="14" FontWeight="Bold" FontFamily="Consolas, Segoe UI" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" BorderBrush="#CBD5E1" BorderThickness="1"/>
-                </StackPanel>
-
-                <!-- Teacher IP (Optional) -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <TextBlock Text="IP:" FontSize="12" Foreground="#64748B" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox x:Name="TeacherIpTextBox" Width="120" Height="28" FontSize="12" VerticalContentAlignment="Center" Padding="4,0" ToolTip="IP учителя (опционально, если автопоиск недоступен)" BorderBrush="#CBD5E1" BorderThickness="1"/>
-                </StackPanel>
-
-                <!-- Connect Button -->
-                <Button x:Name="ConnectButton" Grid.Column="3" Content="Подключиться" Height="28" Padding="14,0" FontWeight="SemiBold" FontSize="12" Background="#2563EB" Foreground="White" BorderThickness="0" Click="ConnectButton_Click" Cursor="Hand">
-                    <Button.Resources>
-                        <Style TargetType="Border">
-                            <Setter Property="CornerRadius" Value="4"/>
-                        </Style>
-                    </Button.Resources>
+                <TextBlock x:Name="ErrorTextBlock" Grid.Column="1" Text="" FontSize="11"
+                           Foreground="{StaticResource Brush.Rose}" FontWeight="Medium"
+                           VerticalAlignment="Center" Margin="8,0,8,0"
+                           TextTrimming="CharacterEllipsis" MaxWidth="150"/>
+                <Button x:Name="CloseButton" Grid.Column="2" Style="{StaticResource Style.IconButton}" Width="28" Height="28" MinHeight="28"
+                        Click="CloseButton_Click" ToolTip="Закрыть">
+                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Close}" Width="12" Height="12"/>
                 </Button>
             </Grid>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <TextBlock Text="PIN" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox x:Name="PinTextBox" Width="112" Height="32" MaxLength="6" FontSize="16" FontWeight="Bold"
+                             FontFamily="Consolas, Cascadia Mono, Segoe UI" HorizontalContentAlignment="Center"
+                             CharacterCasing="Upper" Tag="A2B3C4"/>
+                </StackPanel>
+                <ToggleButton x:Name="AdvancedToggle" Grid.Column="1" Style="{StaticResource Style.LinkToggle}"
+                              Content="Указать IP учителя вручную" HorizontalAlignment="Left" VerticalAlignment="Center"
+                              Checked="AdvancedToggle_Changed" Unchecked="AdvancedToggle_Changed"/>
+                <Button x:Name="ConnectButton" Grid.Column="2" Style="{StaticResource Style.AccentButton}"
+                        Height="32" Padding="16,0" Click="ConnectButton_Click" Content="Подключиться"/>
+            </Grid>
+
+            <Border x:Name="AdvancedPanel" Grid.Row="2" Visibility="Collapsed" Margin="0,10,0,0"
+                    Background="{StaticResource Brush.SurfaceMuted}" CornerRadius="8" Padding="10,8"
+                    BorderBrush="{StaticResource Brush.Border}" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="IP учителя" Style="{StaticResource Text.Caption}"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox x:Name="TeacherIpTextBox" Grid.Column="1" Height="28" MinHeight="28"
+                             Tag="192.168.x.x" ToolTip="IP учителя (опционально, если автопоиск недоступен)"/>
+                </Grid>
+            </Border>
         </Grid>
     </Border>
 </Window>

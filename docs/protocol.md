@@ -30,7 +30,7 @@ bytes  payload
 | StaleStream | 10000 мс |
 | ReconnectWindow | 120000 мс |
 | UDP magic | `NORD1` |
-| PIN | целое 1000–9999, на проводе строка из 4 цифр |
+| PIN | 6 символов: 3 буквы A–Z и 3 цифры, вперемешку; на проводе строка, сравнение без регистра |
 
 ## UDP (ASCII, одна строка, `\n` не обязателен)
 
@@ -53,7 +53,7 @@ NORD1|announce|v=1|name=Класс|ip=192.168.1.5|tcp=47821
 `join_class` ученик → учитель:
 
 ```json
-{"v":1,"type":"join_class","pin":"4821","display_name":"ПК-ученик","hostname":"DESKTOP-ABC","agent_version":"0.1.0","session_token":null}
+{"v":1,"type":"join_class","pin":"K7M2P9","display_name":"ПК-ученик","hostname":"DESKTOP-ABC","agent_version":"0.1.0","session_token":null}
 ```
 
 Повторный Join: тот же объект, `session_token` заполнен.

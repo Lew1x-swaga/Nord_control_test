@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag for this release, e.g. v0.1.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish Teacher (single-file exe)
+        run: |
+          dotnet publish src/NordControl.Teacher/NordControl.Teacher.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o dist/teacher
+
+      - name: Publish Student (single-file exe)
+        run: |
+          dotnet publish src/NordControl.Student/NordControl.Student.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o dist/student
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          name: Nord Control ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/teacher/NordControl.Teacher.exe
+            dist/student/NordControl.Student.exe
+          body: |
+            Два окна Windows — без установки .NET и без командной строки.
+
+            - **NordControl.Teacher.exe** — ноут учителя: создать класс, PIN, экран, запуск и блокировка программ.
+            - **NordControl.Student.exe** — ПК ученика: скачал, запустил, ввёл PIN.
+
+            Windows 10/11 x64. SmartScreen может спросить «Подробнее» → «Выполнить в любом случае».
+            При первом запуске учителя разрешите брандмауэр для **частных** сетей.

@@ -3,13 +3,19 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:NordControl.Teacher"
         mc:Ignorable="d"
         Title="Nord Control — учитель"
-        Height="740" Width="1120"
-        MinHeight="580" MinWidth="920"
+        Height="760" Width="1180"
+        MinHeight="600" MinWidth="960"
         WindowStartupLocation="CenterScreen"
-        Background="#F8FAFC"
-        FontFamily="Segoe UI">
+        Background="{StaticResource Brush.Bg}"
+        FontFamily="Segoe UI Variable, Segoe UI"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -17,8 +23,9 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Top Control Panel -->
-        <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" Padding="16,12">
+        <!-- Header -->
+        <Border x:Name="HeaderBar" Grid.Row="0" Style="{StaticResource Style.Card}"
+                CornerRadius="0" BorderThickness="0,0,0,1" Padding="18,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -26,79 +33,140 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left: Class Name & PIN -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
-                        <TextBlock Text="Имя класса" FontSize="11" Foreground="#64748B" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <TextBox x:Name="ClassNameTextBox" Text="Класс" Width="140" Height="32" VerticalContentAlignment="Center" Padding="8,0" FontSize="13" BorderBrush="#CBD5E1" BorderThickness="1"/>
-                    </StackPanel>
+                    <Border Background="{StaticResource Brush.BlueSoft}" CornerRadius="8" Padding="10,8" Margin="0,0,16,0" VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="Nord Control" Style="{StaticResource Text.Caption}" Foreground="{StaticResource Brush.Blue}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <TextBlock Text="Класс" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox x:Name="ClassNameTextBox" Text="Класс" Width="148" Height="28" MinHeight="28"
+                                         Tag="Имя класса" FontSize="13" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
 
-                    <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
-                        <TextBlock Text="PIN-код" FontSize="11" Foreground="#64748B" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                        <Border Background="#F1F5F9" CornerRadius="4" Padding="12,2" BorderBrush="#CBD5E1" BorderThickness="1">
-                            <TextBlock x:Name="PinTextBlock" Text="1234" FontSize="26" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center" FontFamily="Consolas, Segoe UI"/>
-                        </Border>
-                    </StackPanel>
+                    <Border Background="{StaticResource Brush.SurfaceMuted}" BorderBrush="{StaticResource Brush.Border}"
+                            BorderThickness="1" CornerRadius="10" Padding="14,6,10,6" VerticalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="PIN-код" Style="{StaticResource Text.Caption}"/>
+                                <TextBlock x:Name="PinTextBlock" Text="K7M2P9" FontSize="26" FontWeight="Bold"
+                                           Foreground="{StaticResource Brush.Text}" FontFamily="Consolas, Cascadia Mono, Segoe UI"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <Button x:Name="CopyPinButton" Style="{StaticResource Style.IconButton}"
+                                        Click="CopyPinButton_Click" ToolTip="Копировать PIN в буфер обмена" Margin="0,0,0,4">
+                                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Copy}"/>
+                                </Button>
+                                <Button x:Name="NewPinButton" Style="{StaticResource Style.IconButton}"
+                                        Click="NewPinButton_Click" ToolTip="Сгенерировать новый PIN">
+                                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Refresh}"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
 
-                    <Button x:Name="NewPinButton" Content="Новый PIN" Height="32" Padding="10,0" Margin="0,16,0,0" Click="NewPinButton_Click" Background="#F8FAFC" BorderBrush="#CBD5E1" Cursor="Hand"/>
+                    <Border x:Name="ClassStateBadge" Background="{StaticResource Brush.SurfaceMuted}"
+                            CornerRadius="8" Padding="10,6" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="ClassStateDot" Width="8" Height="8" Fill="{StaticResource Brush.TextMuted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ClassStateBadgeText" Text="Остановлен" Style="{StaticResource Text.Caption}" Foreground="{StaticResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
-                <!-- Right: Action Buttons -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
-                    <Button x:Name="StartClassButton" Content="Начать класс" Height="36" Padding="18,0" Margin="0,0,10,0" FontWeight="SemiBold" FontSize="13" Background="#10B981" Foreground="White" BorderThickness="0" Click="StartClassButton_Click" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </Button.Resources>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="StartClassButton" Style="{StaticResource Style.PrimaryButton}" Click="StartClassButton_Click" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Launch}" Fill="White" Margin="0,0,8,0"/>
+                            <TextBlock Text="Начать класс" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
-                    <Button x:Name="StopClassButton" Content="Завершить класс" Height="36" Padding="18,0" FontWeight="SemiBold" FontSize="13" Background="#EF4444" Foreground="White" BorderThickness="0" IsEnabled="False" Click="StopClassButton_Click" Cursor="Hand">
-                        <Button.Resources>
-                            <Style TargetType="Border">
-                                <Setter Property="CornerRadius" Value="4"/>
-                            </Style>
-                        </Button.Resources>
+                    <Button x:Name="StopClassButton" Style="{StaticResource Style.DangerButton}" IsEnabled="False" Click="StopClassButton_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Close}" Fill="White" Width="14" Height="14" Margin="0,0,8,0"/>
+                            <TextBlock Text="Завершить класс" VerticalAlignment="Center"/>
+                        </StackPanel>
                     </Button>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Main Workspace (Split: Students | Right Tabbed Workspace) -->
-        <Grid Grid.Row="1" Margin="16,12">
+        <!-- Workspace -->
+        <Grid x:Name="WorkspaceGrid" Grid.Row="1" Margin="16,12">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" MinWidth="220" MaxWidth="400"/>
+                <ColumnDefinition Width="300" MinWidth="240" MaxWidth="420"/>
                 <ColumnDefinition Width="12"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Students List -->
-            <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="8">
+            <!-- Students sidebar -->
+            <Border Grid.Column="0" Style="{StaticResource Style.Card}" Padding="12">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Список учеников" FontSize="13" FontWeight="SemiBold" Foreground="#334155" Margin="6,4,6,8"/>
+                    <Grid Grid.Row="0" Margin="2,0,2,10">
+                        <TextBlock Text="Ученики" Style="{StaticResource Text.Subtitle}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StudentCountTextBlock" Text="Онлайн: 0 / Всего: 0"
+                                   Style="{StaticResource Text.Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
 
-                    <ListBox x:Name="StudentsListBox" Grid.Row="1" BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="StudentsListBox_SelectionChanged">
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Search}"
+                              HorizontalAlignment="Left" Margin="10,0,0,0" Panel.ZIndex="1"/>
+                        <TextBox x:Name="StudentSearchTextBox" Tag="Поиск по имени или хосту…" Padding="32,0,10,0"
+                                 TextChanged="StudentSearchTextBox_TextChanged"/>
+                    </Grid>
+
+                    <Border Grid.Row="2" Height="1" Background="{StaticResource Brush.Border}" Margin="0,0,0,8"/>
+
+                    <ListBox x:Name="StudentsListBox" Grid.Row="3"
+                             ItemContainerStyle="{StaticResource Style.StudentListItem}"
+                             SelectionChanged="StudentsListBox_SelectionChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Padding="8,6" Margin="0,2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="4">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13" Foreground="#1E293B"/>
-                                            <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="#94A3B8" Margin="0,2,0,0"/>
-                                        </StackPanel>
-                                        <Border Grid.Column="1" VerticalAlignment="Center" Padding="6,2" CornerRadius="3" Background="{Binding StatusBackground}">
-                                            <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Medium" Foreground="{Binding StatusForeground}"/>
-                                        </Border>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                                        <Ellipse Width="14" Height="14" Opacity="0.22">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Setter Property="Fill" Value="{Binding StatusForeground}"/>
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Online">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <Ellipse Width="8" Height="8" Fill="{Binding StatusForeground}"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Grid>
-                                </Border>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"
+                                                   Foreground="{StaticResource Brush.Text}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="{StaticResource Brush.TextMuted}"
+                                                   Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="11" FontWeight="Medium"
+                                               Foreground="{Binding StatusForeground}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -107,29 +175,33 @@
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" Background="Transparent"/>
 
-            <!-- Right TabControl: Monitoring / Apps & Restrictions -->
-            <TabControl Grid.Column="2" Background="Transparent" BorderThickness="0">
-                <TabControl.Resources>
-                    <Style TargetType="TabItem">
-                        <Setter Property="FontSize" Value="13"/>
-                        <Setter Property="FontWeight" Value="SemiBold"/>
-                        <Setter Property="Padding" Value="14,6"/>
-                        <Setter Property="Cursor" Value="Hand"/>
-                    </Style>
-                </TabControl.Resources>
-
-                <!-- Tab 1: Screen & Processes Monitoring -->
-                <TabItem Header="Мониторинг">
-                    <Grid Margin="0,8,0,0">
-                        <!-- Placeholder when no student selected -->
-                        <Border x:Name="PlaceholderBorder" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Visibility="Visible">
+            <TabControl Grid.Column="2">
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Monitor}" Width="14" Height="14" Margin="0,0,6,0"/>
+                            <TextBlock Text="Мониторинг" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <Grid>
+                        <Border x:Name="PlaceholderBorder" Style="{StaticResource Style.Card}" Visibility="Visible">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock Text="Выберите ученика из списка" FontSize="18" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Экран и список процессов выбранного ученика появятся здесь" FontSize="13" Foreground="#94A3B8" Margin="0,8,0,0" HorizontalAlignment="Center"/>
+                                <Viewbox Width="88" Height="64" Margin="0,0,0,16">
+                                    <Canvas Width="48" Height="36">
+                                        <Path Fill="{StaticResource Brush.BorderStrong}"
+                                              Data="M2,4 H46 A2,2 0 0 1 48,6 V26 A2,2 0 0 1 46,28 H2 A2,2 0 0 1 0,26 V6 A2,2 0 0 1 2,4 Z M2,6 V24 H46 V6 Z"/>
+                                        <Path Fill="{StaticResource Brush.Blue}" Opacity="0.35"
+                                              Data="M8,10 H40 V12 H8 Z M8,15 H32 V17 H8 Z M8,20 H24 V22 H8 Z"/>
+                                        <Rectangle Canvas.Left="18" Canvas.Top="28" Width="12" Height="3" Fill="{StaticResource Brush.BorderStrong}" RadiusX="1" RadiusY="1"/>
+                                        <Rectangle Canvas.Left="12" Canvas.Top="32" Width="24" Height="3" Fill="{StaticResource Brush.Border}" RadiusX="1.5" RadiusY="1.5"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <TextBlock Text="Выберите ученика из списка" Style="{StaticResource Text.Header}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Экран и список процессов выбранного ученика появятся здесь"
+                                           Style="{StaticResource Text.Caption}" Margin="0,8,0,0" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
 
-                        <!-- Student Active View -->
                         <Grid x:Name="StudentDetailGrid" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -138,60 +210,100 @@
                                 <RowDefinition Height="2*" MinHeight="120"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Student Header Info -->
-                            <Border Grid.Row="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8">
+                            <Border Grid.Row="0" Style="{StaticResource Style.Card}" Padding="12,8" Margin="0,0,0,8">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="Экран ученика: " FontSize="13" FontWeight="SemiBold" Foreground="#334155"/>
-                                        <TextBlock x:Name="SelectedStudentNameTextBlock" Text="" FontSize="13" FontWeight="Bold" Foreground="#0284C7"/>
+                                        <TextBlock Text="Экран ученика" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock x:Name="SelectedStudentNameTextBlock" Text="" Style="{StaticResource Text.Subtitle}"
+                                                   Foreground="{StaticResource Brush.Blue}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="Активное приложение: " FontSize="12" Foreground="#64748B"/>
-                                        <TextBlock x:Name="ActiveAppTextBlock" Text="—" FontSize="12" FontWeight="SemiBold" Foreground="#1E293B"/>
+                                        <TextBlock Text="Активное приложение" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <Border Background="{StaticResource Brush.EmeraldSoft}" CornerRadius="4" Padding="8,3">
+                                            <TextBlock x:Name="ActiveAppTextBlock" Text="—" FontSize="12" FontWeight="SemiBold" Foreground="#047857"/>
+                                        </Border>
                                     </StackPanel>
                                 </Grid>
                             </Border>
 
-                            <!-- Screen Image Area -->
-                            <Border Grid.Row="1" Background="#0F172A" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" ClipToBounds="True">
+                            <Border Grid.Row="1" Background="{StaticResource Brush.Viewport}" CornerRadius="10" ClipToBounds="True">
                                 <Grid>
-                                    <Image x:Name="ScreenImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-                                    <TextBlock x:Name="WaitingForFrameTextBlock" Text="Ожидание первого кадра…" FontSize="14" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <Image x:Name="ScreenImage" Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="LowQuality"/>
+                                    <TextBlock x:Name="WaitingForFrameTextBlock" Text="Ожидание первого кадра…"
+                                               FontSize="14" Foreground="{StaticResource Brush.TextMuted}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <Border Background="{StaticResource Brush.ViewportChrome}" CornerRadius="0,0,0,8"
+                                            Padding="10,6" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8" Opacity="0.92">
+                                        <TextBlock x:Name="StreamMetaTextBlock" Text="— · — FPS" FontSize="11"
+                                                   Foreground="#E2E8F0" FontFamily="Consolas, Cascadia Mono, Segoe UI"/>
+                                    </Border>
+                                    <Button x:Name="StreamFullscreenButton" Style="{StaticResource Style.IconButton}"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8"
+                                            Background="#1E293B" BorderBrush="#334155"
+                                            Click="StreamFullscreenButton_Click" ToolTip="Развернуть на весь экран">
+                                        <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Fullscreen}" Fill="#E2E8F0"/>
+                                    </Button>
                                 </Grid>
                             </Border>
 
                             <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="Transparent"/>
 
-                            <!-- Process List Table with ContextMenu -->
-                            <Border Grid.Row="3" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="8">
+                            <Border Grid.Row="3" Style="{StaticResource Style.Card}" Padding="10">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
-
-                                    <Grid Grid.Row="0" Margin="4,2,4,6">
+                                    <Grid Grid.Row="0" Margin="2,0,2,8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Запущенные приложения с окнами" FontSize="12" FontWeight="SemiBold" Foreground="#475569" VerticalAlignment="Center"/>
-                                        <Button Grid.Column="1" Content="Заблокировать выбранный" FontSize="11" Padding="8,3" Background="#FEE2E2" Foreground="#991B1B" BorderBrush="#FCA5A5" Click="BlockSelectedProcessButton_Click" Cursor="Hand"/>
+                                        <TextBlock Grid.Column="0" Text="Запущенные приложения с окнами" Style="{StaticResource Text.Subtitle}" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button Style="{StaticResource Style.SoftAccentButton}" Click="LaunchSelectedProcessButton_Click" Margin="0,0,6,0" ToolTip="Запустить этот exe у выбранного ученика">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Launch}" Width="12" Height="12" Fill="#1D4ED8" Margin="0,0,6,0"/>
+                                                    <TextBlock Text="Запустить" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Style="{StaticResource Style.SoftDangerButton}" Click="BlockSelectedProcessButton_Click">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Lock}" Width="12" Height="12" Fill="#9F1239" Margin="0,0,6,0"/>
+                                                    <TextBlock Text="Блокировать" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
                                     </Grid>
-
-                                    <ListView x:Name="ProcessesListView" Grid.Row="1" BorderThickness="0" Background="Transparent">
+                                    <ListView x:Name="ProcessesListView" Grid.Row="1"
+                                              ItemContainerStyle="{StaticResource Style.ProcessRow}">
                                         <ListView.ContextMenu>
                                             <ContextMenu>
                                                 <MenuItem Header="Заблокировать процесс (в RAM)" Click="BlockProcessMenuItem_Click"/>
+                                                <MenuItem Header="Запустить у выбранного ученика" Click="LaunchSelectedProcessButton_Click"/>
                                             </ContextMenu>
                                         </ListView.ContextMenu>
                                         <ListView.View>
                                             <GridView>
-                                                <GridViewColumn Header="EXE" Width="140" DisplayMemberBinding="{Binding Exe}"/>
+                                                <GridViewColumn Header="EXE" Width="170">
+                                                    <GridViewColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding Exe}" VerticalAlignment="Center"/>
+                                                                <Border Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"
+                                                                        Background="{StaticResource Brush.EmeraldSoft}"
+                                                                        CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                                    <TextBlock Text="активно" FontSize="10" FontWeight="SemiBold" Foreground="#059669"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </GridViewColumn.CellTemplate>
+                                                </GridViewColumn>
                                                 <GridViewColumn Header="PID" Width="70" DisplayMemberBinding="{Binding Pid}"/>
                                                 <GridViewColumn Header="Заголовок окна" Width="360" DisplayMemberBinding="{Binding Title}"/>
                                             </GridView>
@@ -203,16 +315,20 @@
                     </Grid>
                 </TabItem>
 
-                <!-- Tab 2: Apps and Policies Management -->
-                <TabItem Header="Программы и ограничения">
-                    <Grid Margin="0,8,0,0">
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Apps}" Width="14" Height="14" Margin="0,0,6,0"/>
+                            <TextBlock Text="Программы и ограничения" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="3*" MinHeight="220"/>
                             <RowDefinition Height="8"/>
                             <RowDefinition Height="2*" MinHeight="140"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Top Section: Quick Launch (Left) & RAM Block List (Right) -->
                         <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -220,8 +336,7 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <!-- Quick Launch Panel -->
-                            <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12">
+                            <Border Grid.Column="0" Style="{StaticResource Style.Card}" Padding="12">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
@@ -229,28 +344,33 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-
-                                    <TextBlock Grid.Row="0" Text="Быстрый запуск программ" FontSize="13" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,8"/>
-
-                                    <!-- Quick Apps List -->
-                                    <ListBox x:Name="QuickAppsListBox" Grid.Row="1" BorderBrush="#CBD5E1" BorderThickness="1" Margin="0,0,0,8" Background="#F8FAFC">
+                                    <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                        <TextBlock Text="Быстрый запуск" Style="{StaticResource Text.Subtitle}"/>
+                                        <TextBlock Text="Карточки программ для выбранного ученика или всего класса"
+                                                   Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <ListBox x:Name="QuickAppsListBox" Grid.Row="1" Margin="0,0,0,8"
+                                             ItemContainerStyle="{StaticResource Style.CardListItem}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid Margin="2,3">
+                                                <Grid>
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
-                                                        <TextBlock Text="{Binding Exe}" FontSize="11" Foreground="#64748B"/>
+                                                    <Border Width="28" Height="28" CornerRadius="6" Background="{StaticResource Brush.BlueSoft}" Margin="0,0,10,0">
+                                                        <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Launch}"
+                                                              Fill="{StaticResource Brush.Blue}" Width="14" Height="14"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource Brush.Text}"/>
+                                                        <TextBlock Text="{Binding Exe}" FontSize="11" Foreground="{StaticResource Brush.TextMuted}"/>
                                                     </StackPanel>
                                                 </Grid>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                     </ListBox>
-
-                                    <!-- Add App Inline Inputs -->
                                     <Grid Grid.Row="2" Margin="0,0,0,8">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -261,25 +381,30 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-
-                                        <TextBox x:Name="NewAppNameTextBox" Grid.Row="0" Grid.Column="0" Height="26" Margin="0,0,4,4" Padding="4,0" VerticalContentAlignment="Center" ToolTip="Название программы (например, Браузер)" Tag="Название"/>
-                                        <TextBox x:Name="NewAppExeTextBox" Grid.Row="0" Grid.Column="1" Height="26" Margin="0,0,4,4" Padding="4,0" VerticalContentAlignment="Center" ToolTip="Имя exe (например, chrome.exe)" Tag="Exe"/>
-                                        <Button Grid.Row="0" Grid.Column="2" Content="+" Width="26" Height="26" Margin="0,0,0,4" FontWeight="Bold" Click="AddQuickApp_Click" ToolTip="Добавить в список" Cursor="Hand"/>
-
-                                        <TextBox x:Name="NewAppPathTextBox" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Height="26" Margin="0,0,4,0" Padding="4,0" VerticalContentAlignment="Center" ToolTip="Полный путь или цель запуска (необязательно)"/>
-                                        <Button Grid.Row="1" Grid.Column="2" Content="✕" Width="26" Height="26" Click="RemoveQuickApp_Click" ToolTip="Удалить выбранную программу" Cursor="Hand"/>
+                                        <local:AppSuggestBox x:Name="LaunchAppSuggestBox" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                                             Height="28" Margin="0,0,4,4"
+                                                             ToolTip="Начните вводить название или exe — список подскажется"/>
+                                        <Button Grid.Row="0" Grid.Column="2" Style="{StaticResource Style.IconButton}" Margin="0,0,0,4"
+                                                Click="AddQuickApp_Click" ToolTip="Добавить в список">
+                                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Plus}"/>
+                                        </Button>
+                                        <TextBox x:Name="NewAppPathTextBox" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Height="28" MinHeight="28" Margin="0,0,4,0"
+                                                 Tag="Полный путь (необязательно)" ToolTip="Полный путь или цель запуска (необязательно)"/>
+                                        <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource Style.IconButton}"
+                                                Click="RemoveQuickApp_Click" ToolTip="Удалить выбранную программу">
+                                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Close}"/>
+                                        </Button>
                                     </Grid>
-
-                                    <!-- Launch Action Buttons -->
                                     <UniformGrid Grid.Row="3" Columns="2">
-                                        <Button x:Name="LaunchSelectedButton" Content="Запустить у выбранного" Height="30" Margin="0,0,4,0" Background="#0284C7" Foreground="White" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Click="LaunchSelectedButton_Click" Cursor="Hand"/>
-                                        <Button x:Name="LaunchAllButton" Content="Запустить у всех" Height="30" Margin="4,0,0,0" Background="#0EA5E9" Foreground="White" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Click="LaunchAllButton_Click" Cursor="Hand"/>
+                                        <Button x:Name="LaunchSelectedButton" Style="{StaticResource Style.AccentButton}"
+                                                Height="32" Margin="0,0,4,0" Click="LaunchSelectedButton_Click" Content="Запустить у выбранного"/>
+                                        <Button x:Name="LaunchAllButton" Style="{StaticResource Style.AccentButton}"
+                                                Height="32" Margin="4,0,0,0" Background="#0EA5E9" Click="LaunchAllButton_Click" Content="Запустить у всех"/>
                                     </UniformGrid>
                                 </Grid>
                             </Border>
 
-                            <!-- RAM Block List Panel -->
-                            <Border Grid.Column="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12">
+                            <Border Grid.Column="2" Style="{StaticResource Style.Card}" Padding="12">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
@@ -287,42 +412,54 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-
-                                    <TextBlock Grid.Row="0" Text="Блокировка приложений (RAM)" FontSize="13" FontWeight="SemiBold" Foreground="#334155" Margin="0,0,0,8"/>
-
-                                    <!-- Blocked Apps List -->
-                                    <ListBox x:Name="BlockedAppsListBox" Grid.Row="1" BorderBrush="#CBD5E1" BorderThickness="1" Margin="0,0,0,8" Background="#F8FAFC">
+                                    <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                        <TextBlock Text="Блокировка приложений (RAM)" Style="{StaticResource Text.Subtitle}"/>
+                                        <TextBlock Text="Только в памяти агента · без AppLocker" Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <ListBox x:Name="BlockedAppsListBox" Grid.Row="1" Margin="0,0,0,8"
+                                             ItemContainerStyle="{StaticResource Style.CardListItem}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Padding="6,3" Margin="0,1" Background="#FEE2E2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="3">
-                                                    <TextBlock Text="{Binding}" FontSize="12" FontWeight="SemiBold" Foreground="#991B1B"/>
-                                                </Border>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="28" Height="28" CornerRadius="6" Background="{StaticResource Brush.RoseSoft}" Margin="0,0,10,0">
+                                                        <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Lock}"
+                                                              Fill="{StaticResource Brush.Rose}" Width="14" Height="14"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding}" FontSize="12" FontWeight="SemiBold"
+                                                               Foreground="#9F1239" VerticalAlignment="Center"/>
+                                                </StackPanel>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                     </ListBox>
-
-                                    <!-- Add Blocked Exe Input -->
                                     <Grid Grid.Row="2" Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBox x:Name="NewBlockedExeTextBox" Grid.Column="0" Height="26" Margin="0,0,4,0" Padding="4,0" VerticalContentAlignment="Center" ToolTip="Имя exe (например, discord.exe)"/>
-                                        <Button Grid.Column="1" Content="+" Width="26" Height="26" Margin="0,0,4,0" FontWeight="Bold" Click="AddBlockedApp_Click" ToolTip="Добавить в блоклист" Cursor="Hand"/>
-                                        <Button Grid.Column="2" Content="✕" Width="26" Height="26" Click="RemoveBlockedApp_Click" ToolTip="Удалить из блоклиста" Cursor="Hand"/>
+                                        <local:AppSuggestBox x:Name="BlockAppSuggestBox" Grid.Column="0" Height="28" Margin="0,0,4,0"
+                                                             ToolTip="Начните вводить название или exe — список подскажется"/>
+                                        <Button Grid.Column="1" Style="{StaticResource Style.IconButton}" Margin="0,0,4,0"
+                                                Click="AddBlockedApp_Click" ToolTip="Добавить в блоклист">
+                                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Plus}"/>
+                                        </Button>
+                                        <Button Grid.Column="2" Style="{StaticResource Style.IconButton}"
+                                                Click="RemoveBlockedApp_Click" ToolTip="Удалить из блоклиста">
+                                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Close}"/>
+                                        </Button>
                                     </Grid>
-
-                                    <!-- Block List Action Buttons -->
                                     <Grid Grid.Row="3">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <Button Content="Применить всем" Grid.Column="0" Height="30" Margin="0,0,3,0" Background="#DC2626" Foreground="White" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Click="ApplyBlockListAll_Click" Cursor="Hand"/>
-                                        <Button Content="Выбранному" Grid.Column="1" Height="30" Margin="3,0,3,0" Background="#EA580C" Foreground="White" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Click="ApplyBlockListSelected_Click" Cursor="Hand"/>
-                                        <Button Content="Снять всё" Grid.Column="2" Height="30" Margin="3,0,0,0" Background="#64748B" Foreground="White" FontWeight="SemiBold" FontSize="11" BorderThickness="0" Click="ClearBlockListAll_Click" Cursor="Hand"/>
+                                        <Button Grid.Column="0" Height="32" Margin="0,0,3,0" Style="{StaticResource Style.DangerButton}"
+                                                MinHeight="32" FontSize="11" Click="ApplyBlockListAll_Click" Content="Применить всем"/>
+                                        <Button Grid.Column="1" Height="32" Margin="3,0,3,0" Background="#EA580C" Foreground="White" BorderThickness="0"
+                                                FontSize="11" Click="ApplyBlockListSelected_Click" Content="Выбранному"/>
+                                        <Button Grid.Column="2" Height="32" Margin="3,0,0,0" Click="ClearBlockListAll_Click" Content="Снять всё"/>
                                     </Grid>
                                 </Grid>
                             </Border>
@@ -330,27 +467,28 @@
 
                         <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="Transparent"/>
 
-                        <!-- Bottom Section: Installed Hints of Selected Student -->
-                        <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12">
+                        <Border Grid.Row="2" Style="{StaticResource Style.Card}" Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-
                                 <Grid Grid.Row="0" Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Обнаруженное ПО у выбранного ученика (подсказки)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" VerticalAlignment="Center"/>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                        <Button Content="+ В быстрый запуск" FontSize="11" Padding="8,3" Margin="0,0,6,0" Background="#E0F2FE" Foreground="#0369A1" BorderBrush="#BAE6FD" Click="AddHintToQuickApps_Click" Cursor="Hand"/>
-                                        <Button Content="+ В блоклист" FontSize="11" Padding="8,3" Background="#FEE2E2" Foreground="#991B1B" BorderBrush="#FECACA" Click="AddHintToBlockList_Click" Cursor="Hand"/>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Подсказки ученика" Style="{StaticResource Text.Subtitle}"/>
+                                        <TextBlock Text="Обнаруженное ПО выбранного ПК — в запуск или в блоклист"
+                                                   Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Style="{StaticResource Style.SoftAccentButton}" Margin="0,0,6,0" Click="AddHintToQuickApps_Click" Content="+ В быстрый запуск"/>
+                                        <Button Style="{StaticResource Style.SoftDangerButton}" Click="AddHintToBlockList_Click" Content="+ В блоклист"/>
                                     </StackPanel>
                                 </Grid>
-
-                                <ListView x:Name="HintsListView" Grid.Row="1" BorderBrush="#CBD5E1" BorderThickness="1" Background="#F8FAFC">
+                                <ListView x:Name="HintsListView" Grid.Row="1">
                                     <ListView.View>
                                         <GridView>
                                             <GridViewColumn Header="Название" Width="200" DisplayMemberBinding="{Binding Name}"/>
@@ -366,15 +504,36 @@
             </TabControl>
         </Grid>
 
-        <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="16,6">
+        <!-- Status bar -->
+        <Border x:Name="StatusBar" Grid.Row="2" Background="{StaticResource Brush.Surface}"
+                BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,1,0,0" Padding="18,7">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusTextBlock" Grid.Column="0" Text="класс остановлен" FontSize="12" Foreground="#64748B" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Nord Control v0.1.0" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                <TextBlock x:Name="StatusTextBlock" Grid.Column="0" Text="класс остановлен"
+                           FontSize="12" Foreground="{StaticResource Brush.TextSecondary}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="Nord Control v0.1.0" FontSize="11"
+                           Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- Fullscreen stream overlay -->
+        <Border x:Name="StreamFullscreenOverlay" Grid.Row="0" Grid.RowSpan="3"
+                Background="{StaticResource Brush.Viewport}" Visibility="Collapsed" Panel.ZIndex="20">
+            <Grid>
+                <Image x:Name="FullscreenImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="LowQuality"/>
+                <Border Background="{StaticResource Brush.ViewportChrome}" CornerRadius="8" Padding="10,6"
+                        HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16" Opacity="0.92">
+                    <TextBlock x:Name="FullscreenMetaTextBlock" Text="— · — FPS" FontSize="12" Foreground="#E2E8F0"
+                               FontFamily="Consolas, Cascadia Mono, Segoe UI"/>
+                </Border>
+                <Button Style="{StaticResource Style.IconButton}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="16" Background="#1E293B" BorderBrush="#334155"
+                        Click="StreamFullscreenButton_Click" ToolTip="Свернуть (Esc)">
+                    <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.FullscreenExit}" Fill="#E2E8F0"/>
+                </Button>
             </Grid>
         </Border>
     </Grid>

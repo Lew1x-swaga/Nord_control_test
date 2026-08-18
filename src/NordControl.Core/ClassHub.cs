@@ -286,7 +286,7 @@ public class ClassHub : IAsyncDisposable
         }
 
         _className = className;
-        _pin = pin;
+        _pin = PinCode.Normalize(pin);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
         try
@@ -540,7 +540,7 @@ public class ClassHub : IAsyncDisposable
                 return;
             }
 
-            if (joinMsg.Pin != _pin)
+            if (!PinCode.Equals(joinMsg.Pin, _pin))
             {
                 var rejectPin = new WireMessage
                 {

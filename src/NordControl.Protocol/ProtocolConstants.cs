@@ -13,6 +13,7 @@ public static class ProtocolConstants
     public const byte JsonMessageType = 1;
     public const byte JpegMessageType = 2;
     public const string UdpMagic = "NORD1";
-    public const int PinMin = 1000;
-    public const int PinMax = 9999;
+    public const int PinLength = 6;
+    public const int PinDigitCount = 3;
+    public const int PinLetterCount = 3;
 }

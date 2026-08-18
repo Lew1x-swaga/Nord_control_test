@@ -66,7 +66,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
         IAppLauncher? appLauncher = null,
         Func<IReadOnlyList<InstalledAppInfo>>? installedAppsProvider = null)
     {
-        _pin = pin ?? string.Empty;
+        _pin = PinCode.Normalize(pin);
         _udpPort = udpPort;
         _tcpPort = tcpPort;
         _manualTeacherIp = string.IsNullOrWhiteSpace(manualTeacherIp) ? null : manualTeacherIp.Trim();
@@ -98,7 +98,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
     public void SetPin(string pin)
     {
-        _pin = pin ?? string.Empty;
+        _pin = PinCode.Normalize(pin);
     }
 
     public void SetManualTeacherIp(string? manualTeacherIp)
