@@ -70,5 +70,6 @@ public class AppSuggestionFilterTests
         Assert.Contains(AppSuggestionCatalog.CommonApps, a => a.Exe == "chrome.exe");
         Assert.Contains(AppSuggestionCatalog.CommonApps, a => a.Exe == "discord.exe");
         Assert.Contains(AppSuggestionCatalog.CommonApps, a => a.Exe == "winword.exe");
+        Assert.Contains(AppSuggestionCatalog.CommonApps, a => a.Exe == "calc.exe" && a.LaunchTarget == "calculator:");
     }
 }

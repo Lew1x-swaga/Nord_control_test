@@ -167,6 +167,7 @@ public partial class MainWindow : Window
 
         LoadPreset();
         GenerateNewPin();
+        RefreshLanIpDisplay();
         UpdateUiState(isRunning: false);
         RefreshStudentCount();
 
@@ -249,6 +250,53 @@ public partial class MainWindow : Window
         await Task.Delay(1200);
         tip.IsOpen = false;
         CopyPinButton.ToolTip = "Копировать PIN в буфер обмена";
+    }
+
+    private async void CopyIpButton_Click(object sender, RoutedEventArgs e)
+    {
+        var ip = LanIpTextBlock.Text;
+        if (string.IsNullOrWhiteSpace(ip) || ip == "—" || ip == "нет LAN")
+            return;
+
+        try
+        {
+            Clipboard.SetText(ip);
+        }
+        catch
+        {
+            return;
+        }
+
+        var tip = new ToolTip
+        {
+            Content = "IP скопирован",
+            PlacementTarget = CopyIpButton,
+            Placement = PlacementMode.Bottom,
+            StaysOpen = false
+        };
+        CopyIpButton.ToolTip = tip;
+        tip.IsOpen = true;
+        await Task.Delay(1200);
+        tip.IsOpen = false;
+        CopyIpButton.ToolTip = "Скопировать IP";
+    }
+
+    private void RefreshLanIpDisplay()
+    {
+        var ips = LanEndpoints.GetLocalUnicastIpv4();
+        if (ips.Count == 0)
+        {
+            LanIpTextBlock.Text = "нет LAN";
+            CopyIpButton.IsEnabled = false;
+            LanIpBadge.ToolTip = "Локальный адрес не найден. Проверьте Wi‑Fi или Ethernet.";
+            return;
+        }
+
+        LanIpTextBlock.Text = ips[0].ToString();
+        CopyIpButton.IsEnabled = true;
+        LanIpBadge.ToolTip = ips.Count == 1
+            ? $"Ученики вводят этот IP, если автопоиск не сработал: {ips[0]}"
+            : "Адреса этого ПК: " + string.Join(", ", ips);
     }
 
     private void StreamFullscreenButton_Click(object sender, RoutedEventArgs e)
@@ -396,6 +444,7 @@ public partial class MainWindow : Window
         try
         {
             await _hub.StartClassAsync(className, pin);
+            RefreshLanIpDisplay();
             UpdateUiState(isRunning: true);
         }
         catch (Exception ex)
@@ -517,6 +566,8 @@ public partial class MainWindow : Window
             if (studentId != _hub.SelectedStudentId)
                 return;
 
+            var selectedPid = GetSelectedProcess()?.Pid;
+            var selectedExe = GetSelectedProcess()?.Exe;
             _processes.Clear();
             if (msg.Items != null)
             {
@@ -525,6 +576,17 @@ public partial class MainWindow : Window
                     var isActive = !string.IsNullOrWhiteSpace(msg.ActiveExe)
                         && string.Equals(item.Exe, msg.ActiveExe, StringComparison.OrdinalIgnoreCase);
                     _processes.Add(new ProcessRowViewModel(item, isActive));
+                }
+            }
+
+            if (selectedPid is int pid)
+            {
+                var match = _processes.FirstOrDefault(p => p.Pid == pid)
+                    ?? _processes.FirstOrDefault(p => string.Equals(p.Exe, selectedExe, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    ProcessesListView.SelectedItem = match;
+                    ProcessesListView.ScrollIntoView(match);
                 }
             }
 
@@ -553,14 +615,23 @@ public partial class MainWindow : Window
     private void UpdateUiState(bool isRunning)
     {
         ClassNameTextBox.IsEnabled = !isRunning;
+        LessonEditPanel.Visibility = isRunning ? Visibility.Collapsed : Visibility.Visible;
+        LessonActiveBadge.Visibility = isRunning ? Visibility.Visible : Visibility.Collapsed;
         NewPinButton.IsEnabled = !isRunning;
         StartClassButton.IsEnabled = !isRunning;
         StopClassButton.IsEnabled = isRunning;
 
         if (isRunning)
         {
+            var lessonName = ClassNameTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(lessonName))
+            {
+                lessonName = "Класс";
+            }
+
+            LessonActiveTextBlock.Text = $"Урок: {lessonName} (активен)";
             StatusTextBlock.Text = FormatClassRunningStatus();
-            ClassStateBadgeText.Text = "Класс идёт";
+            ClassStateBadgeText.Text = "Активен";
             ClassStateDot.Fill = (Brush)FindResource("Brush.Emerald");
             ClassStateBadge.Background = (Brush)FindResource("Brush.EmeraldSoft");
         }
@@ -585,64 +656,61 @@ public partial class MainWindow : Window
 
     private void OnStudentJoined(ConnectedStudent student)
     {
-        Dispatcher.InvokeAsync(() =>
+        Dispatcher.InvokeAsync(async () =>
         {
-            var existing = _students.FirstOrDefault(s => s.Id == student.Id);
-            if (existing == null)
-            {
-                _students.Add(new StudentItemViewModel
-                {
-                    Id = student.Id,
-                    DisplayName = student.DisplayName,
-                    Hostname = student.Hostname,
-                    Status = student.Status
-                });
-            }
-            else
-            {
-                existing.DisplayName = student.DisplayName;
-                existing.Hostname = student.Hostname;
-                existing.Status = student.Status;
-            }
-
-            if (_hub.IsRunning)
-            {
-                StatusTextBlock.Text = FormatClassRunningStatus();
-            }
-
-            RefreshStudentCount();
+            UpsertStudentRow(student);
+            await PushBlockListToStudentAsync(student.Id);
         });
     }
 
     private void OnStudentStatusChanged(ConnectedStudent student)
     {
-        Dispatcher.InvokeAsync(() =>
+        Dispatcher.InvokeAsync(async () =>
         {
-            var existing = _students.FirstOrDefault(s => s.Id == student.Id);
-            if (existing == null)
+            UpsertStudentRow(student);
+            if (student.Status == StudentHubStatus.Online)
             {
-                _students.Add(new StudentItemViewModel
-                {
-                    Id = student.Id,
-                    DisplayName = student.DisplayName,
-                    Hostname = student.Hostname,
-                    Status = student.Status
-                });
+                await PushBlockListToStudentAsync(student.Id);
             }
-            else
-            {
-                existing.DisplayName = student.DisplayName;
-                existing.Hostname = student.Hostname;
-                existing.Status = student.Status;
-            }
-
-            if (_hub.IsRunning)
-            {
-                StatusTextBlock.Text = FormatClassRunningStatus();
-            }
-
-            RefreshStudentCount();
         });
+    }
+
+    private void UpsertStudentRow(ConnectedStudent student)
+    {
+        var existing = _students.FirstOrDefault(s => s.Id == student.Id);
+        if (existing == null)
+        {
+            _students.Add(new StudentItemViewModel
+            {
+                Id = student.Id,
+                DisplayName = student.DisplayName,
+                Hostname = student.Hostname,
+                Status = student.Status
+            });
+        }
+        else
+        {
+            existing.DisplayName = student.DisplayName;
+            existing.Hostname = student.Hostname;
+            existing.Status = student.Status;
+        }
+
+        if (_hub.IsRunning)
+        {
+            StatusTextBlock.Text = FormatClassRunningStatus();
+        }
+
+        RefreshStudentCount();
+    }
+
+    private async Task PushBlockListToStudentAsync(string studentId)
+    {
+        if (!_hub.IsRunning || string.IsNullOrWhiteSpace(studentId))
+        {
+            return;
+        }
+
+        await _hub.SendBlockListAsync(studentId, _blockedApps.ToList());
     }
 
     private void OnStudentLeft(ConnectedStudent student)
@@ -812,14 +880,13 @@ public partial class MainWindow : Window
 
             _blockedApps.Remove(existingBlocked);
             SavePreset();
-            if (_hub.IsRunning)
-            {
-                await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-            }
+            await BroadcastCurrentBlockListAsync();
         }
 
-        var sent = await _hub.SendLaunchAppAsync(_hub.SelectedStudentId, exe, launchTarget);
-        StatusTextBlock.Text = sent ? $"Запущено «{name ?? exe}» у выбранного ученика" : "Ошибка отправки команды запуска";
+        var sent = await LaunchAfterApplyingBlockListAsync(_hub.SelectedStudentId, exe, launchTarget);
+        StatusTextBlock.Text = sent
+            ? $"Команда запуска «{name ?? exe}» отправлена выбранному ученику"
+            : "Не удалось отправить команду запуска";
     }
 
     private async void LaunchSelectedButton_Click(object sender, RoutedEventArgs e)
@@ -859,14 +926,37 @@ public partial class MainWindow : Window
 
             _blockedApps.Remove(existingBlocked);
             SavePreset();
-            if (_hub.IsRunning)
-            {
-                await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-            }
         }
 
-        var count = await _hub.BroadcastLaunchAppAsync(exe, app.LaunchTarget);
-        StatusTextBlock.Text = $"Запущено «{app.Name}» у {count} учеников";
+        var count = await BroadcastLaunchAfterApplyingBlockListAsync(exe, app.LaunchTarget);
+        StatusTextBlock.Text = count > 0
+            ? $"Команда запуска «{app.Name}» отправлена {count} ученикам"
+            : "Не удалось отправить команду запуска";
+    }
+
+    private async Task<bool> LaunchAfterApplyingBlockListAsync(string? studentId, string exe, string? launchTarget)
+    {
+        if (string.IsNullOrWhiteSpace(studentId))
+        {
+            return false;
+        }
+
+        return await _hub.SendLaunchAppAfterBlockListAsync(studentId, _blockedApps.ToList(), exe, launchTarget);
+    }
+
+    private async Task<int> BroadcastLaunchAfterApplyingBlockListAsync(string exe, string? launchTarget)
+    {
+        return await _hub.BroadcastLaunchAppAfterBlockListAsync(_blockedApps.ToList(), exe, launchTarget);
+    }
+
+    private async Task<int> BroadcastCurrentBlockListAsync()
+    {
+        if (!_hub.IsRunning)
+        {
+            return 0;
+        }
+
+        return await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
     }
 
     private void AddBlockedApp_Click(object sender, RoutedEventArgs e)
@@ -903,8 +993,8 @@ public partial class MainWindow : Window
         BlockAppSuggestBox.Clear();
         if (_hub.IsRunning)
         {
-            var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-            StatusTextBlock.Text = $"«{exe}» добавлена в блоклист и заблокирована у {count} учеников";
+            var count = await BroadcastCurrentBlockListAsync();
+            StatusTextBlock.Text = $"«{exe}» в блоклисте, список отправлен {count} ученикам";
         }
         else
         {
@@ -912,12 +1002,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RemoveBlockedApp_Click(object sender, RoutedEventArgs e)
+    private async void RemoveBlockedApp_Click(object sender, RoutedEventArgs e)
     {
-        if (BlockedAppsListBox.SelectedItem is string exe)
+        if (BlockedAppsListBox.SelectedItem is not string exe)
         {
-            _blockedApps.Remove(exe);
-            SavePreset();
+            return;
+        }
+
+        _blockedApps.Remove(exe);
+        SavePreset();
+
+        if (_hub.IsRunning)
+        {
+            var count = await BroadcastCurrentBlockListAsync();
+            StatusTextBlock.Text = $"«{exe}» снята с блоклиста, список отправлен {count} ученикам";
         }
     }
 
@@ -929,8 +1027,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-        StatusTextBlock.Text = $"Блоклист ({_blockedApps.Count} программ) применен к {count} ученикам";
+        var count = await BroadcastCurrentBlockListAsync();
+        StatusTextBlock.Text = $"Блоклист ({_blockedApps.Count} программ) отправлен {count} ученикам";
     }
 
     private async void ApplyBlockListSelected_Click(object sender, RoutedEventArgs e)
@@ -948,7 +1046,9 @@ public partial class MainWindow : Window
         }
 
         var sent = await _hub.SendBlockListAsync(_hub.SelectedStudentId, _blockedApps.ToList());
-        StatusTextBlock.Text = sent ? $"Блоклист ({_blockedApps.Count} программ) применен к выбранному ученику" : "Ошибка отправки блоклиста";
+        StatusTextBlock.Text = sent
+            ? $"Блоклист ({_blockedApps.Count} программ) отправлен выбранному ученику"
+            : "Не удалось отправить блоклист";
     }
 
     private async void ClearBlockListAll_Click(object sender, RoutedEventArgs e)
@@ -958,10 +1058,13 @@ public partial class MainWindow : Window
 
         if (_hub.IsRunning)
         {
-            await _hub.BroadcastBlockListAsync([]);
+            var count = await BroadcastCurrentBlockListAsync();
+            StatusTextBlock.Text = $"Запреты сняты у {count} учеников";
         }
-
-        StatusTextBlock.Text = "Все запреты сняты";
+        else
+        {
+            StatusTextBlock.Text = "Все запреты сняты";
+        }
     }
 
     private async void BlockProcessMenuItem_Click(object sender, RoutedEventArgs e)
@@ -976,11 +1079,72 @@ public partial class MainWindow : Window
 
     private async void ProcessesListView_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key is Key.Up or Key.Down)
+        {
+            return;
+        }
+
         if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            FocusSelectedProcessRow();
+            return;
+        }
+
+        if (e.Key == Key.Delete)
         {
             e.Handled = true;
             await BlockSelectedProcessCoreAsync();
         }
+    }
+
+    private void ProcessesListView_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindVisualAncestor<ListViewItem>(e.OriginalSource as DependencyObject);
+        if (item == null)
+        {
+            return;
+        }
+
+        item.IsSelected = true;
+        item.Focus();
+    }
+
+    private void ProcessesListView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        FocusSelectedProcessRow();
+    }
+
+    private void FocusSelectedProcessRow()
+    {
+        var proc = GetSelectedProcess();
+        if (proc == null)
+        {
+            return;
+        }
+
+        if (ProcessesListView.SelectedItem != null)
+        {
+            ProcessesListView.ScrollIntoView(ProcessesListView.SelectedItem);
+        }
+
+        var title = string.IsNullOrWhiteSpace(proc.Title) ? "без заголовка" : proc.Title;
+        StatusTextBlock.Text = $"{proc.Exe} · PID {proc.Pid} · {title}";
+    }
+
+    private static T? FindVisualAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current != null)
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private async void QuickAppsListBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -999,8 +1163,8 @@ public partial class MainWindow : Window
             e.Handled = true;
             if (_hub.IsRunning)
             {
-                var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-                StatusTextBlock.Text = $"Блоклист ({_blockedApps.Count} программ) применен к {count} ученикам";
+                var count = await BroadcastCurrentBlockListAsync();
+                StatusTextBlock.Text = $"Блоклист ({_blockedApps.Count} программ) отправлен {count} ученикам";
             }
         }
     }
@@ -1042,8 +1206,8 @@ public partial class MainWindow : Window
 
         if (_hub.IsRunning)
         {
-            var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-            StatusTextBlock.Text = $"Процесс «{exe}» добавлен в блоклист и заблокирован у {count} учеников";
+            var count = await BroadcastCurrentBlockListAsync();
+            StatusTextBlock.Text = $"Процесс «{exe}» в блоклисте, список отправлен {count} ученикам";
         }
         else
         {
@@ -1098,8 +1262,8 @@ public partial class MainWindow : Window
 
             if (_hub.IsRunning)
             {
-                var count = await _hub.BroadcastBlockListAsync(_blockedApps.ToList());
-                StatusTextBlock.Text = $"«{exe}» добавлена в блоклист и заблокирована у {count} учеников";
+                var count = await BroadcastCurrentBlockListAsync();
+                StatusTextBlock.Text = $"«{exe}» в блоклисте, список отправлен {count} ученикам";
             }
             else
             {

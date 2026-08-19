@@ -92,6 +92,56 @@ public class ScreenStreamTests
     }
 
     [Fact]
+    public async Task Hub_overlapping_select_keeps_stream_on_latest_student()
+    {
+        var (udpPort, tcpPort) = TestPorts.NextPair();
+        var clock = new TestClock();
+        await using var hub = new ClassHub(udpPort: udpPort, tcpPort: tcpPort, clock: clock);
+        await hub.StartClassAsync("TestClass", "1234");
+
+        var client1 = new ClassClient("1234", udpPort: udpPort, tcpPort: tcpPort, manualTeacherIp: "127.0.0.1", displayName: "Student1", clock: clock);
+        var client2 = new ClassClient("1234", udpPort: udpPort, tcpPort: tcpPort, manualTeacherIp: "127.0.0.1", displayName: "Student2", clock: clock);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var run1 = Task.Run(() => client1.RunAsync(cts.Token));
+        var run2 = Task.Run(() => client2.RunAsync(cts.Token));
+
+        for (int i = 0; i < 50; i++)
+        {
+            if (client1.Session.Status == SessionStatus.Online && client2.Session.Status == SessionStatus.Online && hub.Students.Count == 2)
+                break;
+            await Task.Delay(50);
+        }
+
+        Assert.Equal(SessionStatus.Online, client1.Session.Status);
+        Assert.Equal(SessionStatus.Online, client2.Session.Status);
+
+        var id1 = client1.Session.StudentId!;
+        var id2 = client2.Session.StudentId!;
+
+        var first = hub.SelectStudentAsync(id1);
+        var second = hub.SelectStudentAsync(id2);
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(id2, hub.SelectedStudentId);
+
+        for (int i = 0; i < 40; i++)
+        {
+            if (!client1.Session.StreamEnabled && client2.Session.StreamEnabled)
+                break;
+            await Task.Delay(50);
+        }
+
+        Assert.False(client1.Session.StreamEnabled);
+        Assert.True(client2.Session.StreamEnabled);
+
+        cts.Cancel();
+        try { await Task.WhenAll(run1, run2); } catch { }
+        client1.Dispose();
+        client2.Dispose();
+    }
+
+    [Fact]
     public async Task Hub_receives_type2_jpeg_frame_from_selected_student()
     {
         var (udpPort, tcpPort) = TestPorts.NextPair();

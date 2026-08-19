@@ -19,7 +19,7 @@ public partial class ScreenWatcherBannerWindow : Window
     {
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - ActualWidth - 16;
-        Top = workArea.Bottom - ActualHeight - 16;
+        Top = workArea.Bottom - ActualHeight - 48;
     }
 
     public static void SetStreamingState(bool isStreaming)

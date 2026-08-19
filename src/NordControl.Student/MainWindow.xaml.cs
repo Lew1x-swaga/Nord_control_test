@@ -19,6 +19,7 @@ public partial class MainWindow : Window
 {
     private ClassClient? _client;
     private CancellationTokenSource? _clientCts;
+    private CancellationTokenSource? _discoveryHintCts;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
     private readonly IScreenCapturer _screenCapturer = new DxgiScreenCapturer();
     private readonly ProcessMonitor _processMonitor = new();
@@ -132,6 +133,7 @@ public partial class MainWindow : Window
         }
 
         ErrorTextBlock.Text = "";
+        HideDiscoveryHint();
         StatusCaptionTextBlock.Text = "Поиск учителя";
         StatusHeaderTextBlock.Text = "Nord Control — поиск учителя";
         StatusIndicator.Fill = BrushSearch;
@@ -154,6 +156,14 @@ public partial class MainWindow : Window
         _client.Error += OnClientError;
 
         var token = _clientCts.Token;
+        if (string.IsNullOrEmpty(manualIp))
+        {
+            _discoveryHintCts?.Cancel();
+            _discoveryHintCts?.Dispose();
+            _discoveryHintCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            _ = ShowAutoDiscoveryHintAsync(_discoveryHintCts.Token);
+        }
+
         _ = Task.Run(() => _client.RunAsync(token), token);
     }
 
@@ -177,6 +187,7 @@ public partial class MainWindow : Window
                     ConnectButton.IsEnabled = false;
                     CloseButton.ToolTip = "Свернуть в трей";
                     ErrorTextBlock.Text = "";
+                    HideDiscoveryHint();
                     if (_leaveLessonItem != null)
                     {
                         _leaveLessonItem.Enabled = true;
@@ -365,13 +376,52 @@ public partial class MainWindow : Window
         StatusIndicator.Fill = BrushIdle;
         StatusHalo.Fill = BrushIdle;
         ErrorTextBlock.Text = "";
+        HideDiscoveryHint();
         ShowFromTray();
+    }
+
+    private async Task ShowAutoDiscoveryHintAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(3500, token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            if (_hasJoinedClass || _client?.Session.Status == SessionStatus.Online)
+            {
+                return;
+            }
+
+            AdvancedToggle.IsChecked = true;
+            DiscoveryHintTextBlock.Text = "Учитель не найден автоматически. Введите IP учителя вручную (см. на экране учителя)";
+            DiscoveryHintTextBlock.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void HideDiscoveryHint()
+    {
+        _discoveryHintCts?.Cancel();
+        DiscoveryHintTextBlock.Text = "";
+        DiscoveryHintTextBlock.Visibility = Visibility.Collapsed;
     }
 
     private void ShutdownAgent()
     {
         ScreenWatcherBannerWindow.CloseBanner();
         _notifyIcon?.Dispose();
+        _discoveryHintCts?.Cancel();
+        _discoveryHintCts?.Dispose();
         _clientCts?.Cancel();
         _client?.Dispose();
         _screenCapturer.Dispose();

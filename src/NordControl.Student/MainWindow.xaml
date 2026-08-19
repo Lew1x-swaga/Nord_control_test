@@ -112,6 +112,10 @@
                            Foreground="{StaticResource Brush.Rose}" FontWeight="Medium"
                            Margin="0,8,0,0" TextWrapping="Wrap"
                            HorizontalAlignment="Left"/>
+                <TextBlock x:Name="DiscoveryHintTextBlock" Text="" FontSize="12"
+                           Foreground="{StaticResource Brush.TextSecondary}" FontWeight="Medium"
+                           Margin="0,8,0,0" TextWrapping="Wrap" Visibility="Collapsed"
+                           HorizontalAlignment="Left"/>
             </StackPanel>
         </Grid>
     </Border>

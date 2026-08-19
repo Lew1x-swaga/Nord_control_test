@@ -6,8 +6,8 @@
         xmlns:local="clr-namespace:NordControl.Teacher"
         mc:Ignorable="d"
         Title="Nord Control — учитель"
-        Height="760" Width="1180"
-        MinHeight="600" MinWidth="960"
+        Height="760" Width="1280"
+        MinHeight="600" MinWidth="1080"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Brush.Bg}"
         FontFamily="Segoe UI Variable, Segoe UI"
@@ -37,11 +37,17 @@
                     <Border Background="{StaticResource Brush.BlueSoft}" CornerRadius="8" Padding="10,8" Margin="0,0,16,0" VerticalAlignment="Center">
                         <StackPanel>
                             <TextBlock Text="Nord Control" Style="{StaticResource Text.Caption}" Foreground="{StaticResource Brush.Blue}"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                <TextBlock Text="Класс" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBox x:Name="ClassNameTextBox" Text="Класс" Width="148" Height="28" MinHeight="28"
-                                         Tag="Имя класса" FontSize="13" FontWeight="SemiBold"/>
+                            <StackPanel x:Name="LessonEditPanel" Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock Text="Название урока:" Style="{StaticResource Text.Caption}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox x:Name="ClassNameTextBox" Width="210" Height="28" MinHeight="28"
+                                         Tag="Например: 9А Информатика" FontSize="13"/>
                             </StackPanel>
+                            <Border x:Name="LessonActiveBadge" Visibility="Collapsed"
+                                    Background="{StaticResource Brush.EmeraldSoft}" CornerRadius="6" Padding="8,4" Margin="0,4,0,0">
+                                <TextBlock x:Name="LessonActiveTextBlock" Text="Урок: (активен)"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#047857"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Border>
                         </StackPanel>
                     </Border>
 
@@ -68,6 +74,25 @@
                                     <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Refresh}"/>
                                 </Button>
                             </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border x:Name="LanIpBadge" Background="{StaticResource Brush.BlueSoft}" BorderBrush="#93C5FD"
+                            BorderThickness="1" CornerRadius="10" Padding="14,6,10,6" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="Ваш IP" Style="{StaticResource Text.Caption}" Foreground="{StaticResource Brush.Blue}"/>
+                                <TextBlock x:Name="LanIpTextBlock" Text="—" FontSize="20" FontWeight="Bold"
+                                           Foreground="{StaticResource Brush.Text}" FontFamily="Consolas, Cascadia Mono, Segoe UI"
+                                           Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button x:Name="CopyIpButton" Grid.Column="1" Style="{StaticResource Style.AccentButton}"
+                                    Height="32" MinHeight="32" Padding="12,0" VerticalAlignment="Center"
+                                    Click="CopyIpButton_Click" ToolTip="Скопировать IP" Content="Скопировать IP"/>
                         </Grid>
                     </Border>
 
@@ -275,10 +300,14 @@
                                     </Grid>
                                     <ListView x:Name="ProcessesListView" Grid.Row="1"
                                               ItemContainerStyle="{StaticResource Style.ProcessRow}"
-                                              PreviewKeyDown="ProcessesListView_PreviewKeyDown">
+                                              SelectionMode="Single"
+                                              KeyboardNavigation.DirectionalNavigation="Contained"
+                                              PreviewKeyDown="ProcessesListView_PreviewKeyDown"
+                                              PreviewMouseLeftButtonDown="ProcessesListView_PreviewMouseLeftButtonDown"
+                                              MouseDoubleClick="ProcessesListView_MouseDoubleClick">
                                         <ListView.ContextMenu>
                                             <ContextMenu>
-                                                <MenuItem Header="Закрыть и запретить до конца урока" Click="BlockProcessMenuItem_Click"/>
+                                                <MenuItem Header="Закрыть и запретить до конца урока" Click="BlockProcessMenuItem_Click" InputGestureText="Del"/>
                                             </ContextMenu>
                                         </ListView.ContextMenu>
                                         <ListView.View>

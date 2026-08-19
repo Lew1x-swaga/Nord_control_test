@@ -107,7 +107,7 @@ public static class AppSuggestionCatalog
         App("Excel", "excel.exe"),
         App("PowerPoint", "powerpnt.exe"),
         App("Блокнот", "notepad.exe"),
-        App("Калькулятор", "calc.exe"),
+        App("Калькулятор", "calc.exe", "calculator:"),
         App("Paint", "mspaint.exe"),
         App("Discord", "discord.exe"),
         App("Telegram", "telegram.exe"),
@@ -123,9 +123,10 @@ public static class AppSuggestionCatalog
         App("1С:Предприятие", "1cv8.exe"),
     };
 
-    private static InstalledAppInfo App(string name, string exe) => new()
+    private static InstalledAppInfo App(string name, string exe, string? launchTarget = null) => new()
     {
         Name = name,
-        Exe = exe
+        Exe = exe,
+        LaunchTarget = launchTarget
     };
 }

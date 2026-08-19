@@ -53,6 +53,8 @@ public class ClassHub : IAsyncDisposable
     private int _heartbeatSeq;
     private bool _isDisposed;
     private string? _selectedStudentId;
+    private volatile string? _desiredStudentId;
+    private readonly SemaphoreSlim _selectLock = new(1, 1);
 
     public int UdpPort => _udpPort;
     public int TcpPort => _tcpPort;
@@ -119,25 +121,43 @@ public class ClassHub : IAsyncDisposable
 
     public async Task SelectStudentAsync(string? studentId)
     {
-        var previousId = _selectedStudentId;
-        if (previousId == studentId)
+        _desiredStudentId = studentId;
+        await _selectLock.WaitAsync();
+        try
         {
-            return;
+            while (true)
+            {
+                var target = _desiredStudentId;
+                var previousId = _selectedStudentId;
+                if (string.Equals(previousId, target, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _selectedStudentId = target;
+                SelectedStudentChanged?.Invoke(target);
+
+                if (previousId != null && _activeConnections.TryGetValue(previousId, out var prevConn))
+                {
+                    await prevConn.TrySendMessageAsync(new WireMessage { Type = "stream_stop" });
+                }
+
+                if (!string.Equals(_desiredStudentId, target, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (target != null && _activeConnections.TryGetValue(target, out var newConn))
+                {
+                    await newConn.TrySendMessageAsync(new WireMessage { Type = "stream_start" });
+                }
+
+                return;
+            }
         }
-
-        _selectedStudentId = studentId;
-        SelectedStudentChanged?.Invoke(studentId);
-
-        // 1. Send stream_stop to previous student
-        if (previousId != null && _activeConnections.TryGetValue(previousId, out var prevConn))
+        finally
         {
-            await prevConn.TrySendMessageAsync(new WireMessage { Type = "stream_stop" });
-        }
-
-        // 2. Send stream_start to newly selected student
-        if (studentId != null && _activeConnections.TryGetValue(studentId, out var newConn))
-        {
-            await newConn.TrySendMessageAsync(new WireMessage { Type = "stream_start" });
+            _selectLock.Release();
         }
     }
 
@@ -160,15 +180,41 @@ public class ClassHub : IAsyncDisposable
 
     public async Task<int> BroadcastLaunchAppAsync(string exe, string? launchTarget = null)
     {
-        var onlineStudentIds = _studentsById.Values
-            .Where(s => s.Status == StudentHubStatus.Online)
-            .Select(s => s.Id)
-            .ToList();
-
         var successCount = 0;
-        foreach (var id in onlineStudentIds)
+        foreach (var id in GetOnlineStudentIds())
         {
             if (await SendLaunchAppAsync(id, exe, launchTarget))
+            {
+                successCount++;
+            }
+        }
+
+        return successCount;
+    }
+
+    public async Task<bool> SendLaunchAppAfterBlockListAsync(
+        string studentId,
+        IReadOnlyList<string> exeNames,
+        string exe,
+        string? launchTarget = null)
+    {
+        if (!await SendBlockListAsync(studentId, exeNames))
+        {
+            return false;
+        }
+
+        return await SendLaunchAppAsync(studentId, exe, launchTarget);
+    }
+
+    public async Task<int> BroadcastLaunchAppAfterBlockListAsync(
+        IReadOnlyList<string> exeNames,
+        string exe,
+        string? launchTarget = null)
+    {
+        var successCount = 0;
+        foreach (var id in GetOnlineStudentIds())
+        {
+            if (await SendLaunchAppAfterBlockListAsync(id, exeNames, exe, launchTarget))
             {
                 successCount++;
             }
@@ -193,13 +239,8 @@ public class ClassHub : IAsyncDisposable
 
     public async Task<int> BroadcastBlockListAsync(IReadOnlyList<string> exeNames)
     {
-        var onlineStudentIds = _studentsById.Values
-            .Where(s => s.Status == StudentHubStatus.Online)
-            .Select(s => s.Id)
-            .ToList();
-
         var successCount = 0;
-        foreach (var id in onlineStudentIds)
+        foreach (var id in GetOnlineStudentIds())
         {
             if (await SendBlockListAsync(id, exeNames))
             {
@@ -208,6 +249,14 @@ public class ClassHub : IAsyncDisposable
         }
 
         return successCount;
+    }
+
+    private List<string> GetOnlineStudentIds()
+    {
+        return _studentsById.Values
+            .Where(s => s.Status == StudentHubStatus.Online)
+            .Select(s => s.Id)
+            .ToList();
     }
 
     public Task StartClass(string className, string pin, CancellationToken ct = default)
@@ -520,8 +569,6 @@ public class ClassHub : IAsyncDisposable
                 CloseClient(oldConn.Client);
             }
 
-            _activeConnections[studentId] = connection;
-
             var joinOk = new WireMessage
             {
                 Type = "join_ok",
@@ -531,7 +578,8 @@ public class ClassHub : IAsyncDisposable
                 ReconnectWindowMs = ProtocolConstants.ReconnectWindowMs
             };
 
-            await connection.TrySendMessageAsync(joinOk, 5000, ct);
+            await FrameCodec.WriteJsonMessageAsync(stream, joinOk, ct);
+            _activeConnections[studentId] = connection;
 
             // If this student is currently selected, send stream_start
             if (_selectedStudentId == studentId)

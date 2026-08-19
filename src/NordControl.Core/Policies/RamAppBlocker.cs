@@ -132,6 +132,14 @@ public class RamAppBlocker : IAppBlocker
 
                 if (blockListSnapshot.Contains(normalized))
                 {
+                    lock (_lock)
+                    {
+                        if (!_blockList.Contains(normalized))
+                        {
+                            continue;
+                        }
+                    }
+
                     try
                     {
                         candidate.KillAction();

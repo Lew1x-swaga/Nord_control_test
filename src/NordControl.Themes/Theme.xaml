@@ -409,11 +409,25 @@
     </Style>
 
     <Style x:Key="Style.ProcessRow" TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="MinHeight" Value="30"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="True"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
         <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{StaticResource Brush.SurfaceHover}"/>
+            </Trigger>
             <DataTrigger Binding="{Binding IsActive}" Value="True">
                 <Setter Property="Background" Value="{StaticResource Brush.ActiveRow}"/>
                 <Setter Property="FontWeight" Value="SemiBold"/>
             </DataTrigger>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource Brush.BlueSoft}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource Brush.Blue}"/>
+            </Trigger>
         </Style.Triggers>
     </Style>
 

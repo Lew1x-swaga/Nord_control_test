@@ -259,16 +259,8 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
         try
         {
-            foreach (var dest in LanEndpoints.GetUdpProbeDestinations(_udpPort))
-            {
-                try
-                {
-                    await udp.SendAsync(probeBytes, probeBytes.Length, dest);
-                }
-                catch
-                {
-                }
-            }
+            await SendUdpProbesAsync(udp, probeBytes);
+            await SendUdpProbesAsync(udp, probeBytes);
         }
         catch { }
 
@@ -304,6 +296,52 @@ public class ClassClient : IAsyncDisposable, IDisposable
         }
 
         return (null, 0);
+    }
+
+    private async Task SendUdpProbesAsync(UdpClient udp, byte[] probeBytes)
+    {
+        foreach (var dest in LanEndpoints.GetUdpProbeDestinations(_udpPort))
+        {
+            try
+            {
+                await udp.SendAsync(probeBytes, probeBytes.Length, dest);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static async Task<WireMessage?> ReadJoinHandshakeAsync(NetworkStream stream, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var handshakeFrame = await FrameCodec.ReadAsync(stream, ct);
+            if (handshakeFrame == null)
+            {
+                return null;
+            }
+
+            if (handshakeFrame.Value.Type != ProtocolConstants.JsonMessageType)
+            {
+                continue;
+            }
+
+            var reply = WireMessage.Deserialize(handshakeFrame.Value.Payload);
+            if (reply == null)
+            {
+                continue;
+            }
+
+            if (reply.Type is "heartbeat" or "stream_start" or "stream_stop")
+            {
+                continue;
+            }
+
+            return reply;
+        }
+
+        return null;
     }
 
     private async Task<bool> TryReconnectAsync(string ip, int port, CancellationToken ct)
@@ -343,9 +381,9 @@ public class ClassClient : IAsyncDisposable, IDisposable
         using var stream = client.GetStream();
         using var sendLock = new SemaphoreSlim(1, 1);
 
-        // Send join_class frame
         var joinMsg = new WireMessage
         {
+            V = ProtocolConstants.Version,
             Type = "join_class",
             Pin = _pin,
             DisplayName = _displayName ?? Environment.MachineName,
@@ -356,26 +394,14 @@ public class ClassClient : IAsyncDisposable, IDisposable
 
         await FrameCodec.WriteJsonMessageAsync(stream, joinMsg, ct);
 
-        // Read handshake reply
-        var handshakeFrame = await FrameCodec.ReadAsync(stream, ct);
-        if (handshakeFrame == null)
+        var reply = await ReadJoinHandshakeAsync(stream, ct);
+        if (reply == null)
         {
             if (_session.Status == SessionStatus.Online)
             {
                 _session.OnTcpDropped();
             }
             return;
-        }
-
-        if (handshakeFrame.Value.Type != ProtocolConstants.JsonMessageType)
-        {
-            throw new InvalidDataException("Ожидался JSON ответ на join_class");
-        }
-
-        var reply = WireMessage.Deserialize(handshakeFrame.Value.Payload);
-        if (reply == null)
-        {
-            throw new InvalidDataException("Некорректный JSON ответ на join_class");
         }
 
         if (reply.Type == "join_reject")

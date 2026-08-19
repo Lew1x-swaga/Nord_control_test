@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using NordControl.Student.Services;
 using WpfApplication = System.Windows.Application;
 using WpfBrush = System.Windows.Media.Brush;
+using MediaColor = System.Windows.Media.Color;
 
 namespace NordControl.Student;
 
@@ -31,6 +32,10 @@ public partial class ToastWindow : Window
                 {
                     ToastIcon.Fill = emeraldBrush;
                 }
+
+                ToastIconChrome.Background = new SolidColorBrush(MediaColor.FromRgb(6, 78, 59));
+                ToastTitleTextBlock.Foreground = new SolidColorBrush(MediaColor.FromRgb(167, 243, 208));
+                ToastChrome.BorderBrush = new SolidColorBrush(MediaColor.FromRgb(16, 185, 129));
             }
             catch
             {
@@ -39,7 +44,7 @@ public partial class ToastWindow : Window
 
         _timer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(3.2)
+            Interval = TimeSpan.FromSeconds(5.0)
         };
         _timer.Tick += (s, e) =>
         {
@@ -53,8 +58,8 @@ public partial class ToastWindow : Window
     private void ToastWindow_Loaded(object sender, RoutedEventArgs e)
     {
         var workArea = SystemParameters.WorkArea;
-        Left = workArea.Right - ActualWidth - 16;
-        Top = workArea.Bottom - ActualHeight - 16;
+        Left = workArea.Left + Math.Max(0, (workArea.Width - ActualWidth) / 2);
+        Top = workArea.Top + 40;
         _timer.Start();
     }
 

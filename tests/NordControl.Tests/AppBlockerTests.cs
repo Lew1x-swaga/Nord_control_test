@@ -220,4 +220,29 @@ public class AppBlockerTests
         Assert.Empty(blocker.GetBlockList());
         Assert.False(blocker.IsBlocked("game.exe"));
     }
+
+    [Fact]
+    public void CheckAndEnforce_does_not_kill_if_block_list_cleared_during_enumeration()
+    {
+        var killed = false;
+        RamAppBlocker? blocker = null;
+        blocker = new RamAppBlocker(
+            processEnumerator: () =>
+            {
+                blocker!.SetBlockList([]);
+                return
+                [
+                    new ProcessCandidate(42, "chrome.exe", () => killed = true)
+                ];
+            },
+            autoStartWatcher: false);
+
+        using (blocker)
+        {
+            blocker.SetBlockList(["chrome.exe"]);
+            blocker.CheckAndEnforce();
+        }
+
+        Assert.False(killed);
+    }
 }

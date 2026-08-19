@@ -512,6 +512,77 @@ public class Stage3CoreTests
     }
 
     [Fact]
+    public async Task SendLaunchAppAfterBlockList_skips_launch_when_student_missing()
+    {
+        var (udp, tcp) = TestPorts.NextPair();
+        await using var hub = new ClassHub(udp, tcp);
+        await hub.StartClass("Class-LaunchAfterBlock", "5555", CancellationToken.None);
+
+        var sent = await hub.SendLaunchAppAfterBlockListAsync(
+            "missing-student",
+            new[] { "discord.exe" },
+            "notepad.exe",
+            @"C:\Windows\notepad.exe");
+
+        Assert.False(sent);
+        await hub.StopClassAsync();
+    }
+
+    [Fact]
+    public async Task SendLaunchAppAfterBlockList_sends_block_list_before_launch()
+    {
+        var (udp, tcp) = TestPorts.NextPair();
+        await using var hub = new ClassHub(udp, tcp);
+        await hub.StartClass("Class-LaunchAfterBlockOk", "5556", CancellationToken.None);
+
+        var fakeLauncher = new FakeAppLauncher();
+        var fakeBlocker = new FakeAppBlocker();
+        await using var client = new ClassClient(
+            pin: "5556",
+            udpPort: udp,
+            tcpPort: tcp,
+            manualTeacherIp: "127.0.0.1",
+            appBlocker: fakeBlocker,
+            appLauncher: fakeLauncher);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var runTask = client.RunAsync(cts.Token);
+
+        try
+        {
+            var timeoutAt = DateTime.UtcNow.AddSeconds(4);
+            while (client.Session.Status != SessionStatus.Online && DateTime.UtcNow < timeoutAt)
+            {
+                await Task.Delay(50);
+            }
+            Assert.Equal(SessionStatus.Online, client.Session.Status);
+
+            var studentId = client.Session.StudentId!;
+            var sent = await hub.SendLaunchAppAfterBlockListAsync(
+                studentId,
+                new[] { "steam.exe" },
+                "notepad.exe",
+                @"C:\Windows\notepad.exe");
+            Assert.True(sent);
+
+            var checkTimeout = DateTime.UtcNow.AddSeconds(3);
+            while ((fakeBlocker.SetBlockListCount == 0 || fakeLauncher.Launched.Count == 0) && DateTime.UtcNow < checkTimeout)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Contains("steam.exe", fakeBlocker.CurrentBlockList);
+            Assert.Single(fakeLauncher.Launched);
+            Assert.Equal("notepad.exe", fakeLauncher.Launched[0].exe);
+        }
+        finally
+        {
+            cts.Cancel();
+            try { await runTask; } catch { }
+        }
+    }
+
+    [Fact]
     public async Task FailOpen_OnClientDispose_ClearsBlockList()
     {
         var fakeBlocker = new FakeAppBlocker();
