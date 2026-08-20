@@ -195,10 +195,11 @@ public partial class MainWindow : Window
             var name = app?.Name;
             if (!string.IsNullOrWhiteSpace(exe))
             {
+                EnsureQuickAppListed(name, exe, target);
                 await LaunchSingleAppCoreAsync(exe, target, name);
             }
         };
-        BlockAppSuggestBox.Submitted += async _ => await AddBlockedAppCoreAsync();
+        BlockAppSuggestBox.Submitted += async app => await AddBlockedAppCoreAsync(app);
         RefreshAppSuggestions();
     }
 
@@ -891,22 +892,41 @@ public partial class MainWindow : Window
             return;
         }
 
-        exe = ProcessNameHelper.Normalize(exe);
+        EnsureQuickAppListed(name, exe, string.IsNullOrWhiteSpace(path) ? null : path);
+    }
 
-        if (!_quickApps.Any(a => string.Equals(a.Exe, exe, StringComparison.OrdinalIgnoreCase)))
+    private void EnsureQuickAppListed(string? name, string rawExe, string? launchTarget)
+    {
+        var exe = ProcessNameHelper.Normalize(rawExe);
+        if (string.IsNullOrWhiteSpace(exe))
         {
-            _quickApps.Add(new InstalledAppInfo
+            return;
+        }
+
+        var displayName = string.IsNullOrWhiteSpace(name) ? Path.GetFileNameWithoutExtension(exe) : name.Trim();
+        var existing = _quickApps.FirstOrDefault(a => string.Equals(a.Exe, exe, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            existing = new InstalledAppInfo
             {
-                Name = name,
+                Name = displayName,
                 Exe = exe,
-                LaunchTarget = string.IsNullOrWhiteSpace(path) ? null : path
-            });
+                LaunchTarget = string.IsNullOrWhiteSpace(launchTarget) ? null : launchTarget
+            };
+            _quickApps.Add(existing);
+            SavePreset();
+            RefreshAppSuggestions();
+        }
+        else if (!string.IsNullOrWhiteSpace(launchTarget) && string.IsNullOrWhiteSpace(existing.LaunchTarget))
+        {
+            existing.LaunchTarget = launchTarget;
             SavePreset();
         }
 
+        QuickAppsListBox.SelectedItem = existing;
+        QuickAppsListBox.ScrollIntoView(existing);
         LaunchAppSuggestBox.Clear();
         NewAppPathTextBox.Clear();
-        RefreshAppSuggestions();
     }
 
     private void RemoveQuickApp_Click(object sender, RoutedEventArgs e)
@@ -1071,9 +1091,9 @@ public partial class MainWindow : Window
         _ = AddBlockedAppCoreAsync();
     }
 
-    private async Task AddBlockedAppCoreAsync()
+    private async Task AddBlockedAppCoreAsync(InstalledAppInfo? submitted = null)
     {
-        var selected = BlockAppSuggestBox.SelectedApp;
+        var selected = submitted ?? BlockAppSuggestBox.SelectedApp;
         var exe = selected != null
             ? ProcessNameHelper.Normalize(selected.Exe)
             : ProcessNameHelper.Normalize(BlockAppSuggestBox.QueryText);
@@ -1097,6 +1117,9 @@ public partial class MainWindow : Window
             SavePreset();
         }
 
+        var listed = _blockedApps.First(a => string.Equals(a, exe, StringComparison.OrdinalIgnoreCase));
+        BlockedAppsListBox.SelectedItem = listed;
+        BlockedAppsListBox.ScrollIntoView(listed);
         BlockAppSuggestBox.Clear();
         if (_hub.IsRunning)
         {

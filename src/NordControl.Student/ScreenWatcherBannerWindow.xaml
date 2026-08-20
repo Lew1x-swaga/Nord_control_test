@@ -15,19 +15,19 @@
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         FontFamily="Segoe UI Variable, Segoe UI">
-    <Border Margin="10" Padding="16,12" CornerRadius="12"
-            Background="#0C4A6E" BorderBrush="#38BDF8" BorderThickness="2">
+    <Border Margin="8" Padding="10,7" CornerRadius="10"
+            Background="#0C4A6E" BorderBrush="#38BDF8" BorderThickness="1.5">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="22" ShadowDepth="4" Direction="270" Opacity="0.45" Color="#000000"/>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="3" Direction="270" Opacity="0.38" Color="#000000"/>
         </Border.Effect>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Grid Width="22" Height="22" Margin="0,0,12,0" VerticalAlignment="Center">
+            <Grid Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
                 <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Monitor}"
-                      Fill="#7DD3FC" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Ellipse Width="8" Height="8" Fill="#34D399" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,-2,-2"/>
+                      Fill="#7DD3FC" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Ellipse Width="6" Height="6" Fill="#34D399" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,-2,-2"/>
             </Grid>
             <TextBlock Text="Учитель просматривает ваш экран"
-                       FontSize="15" FontWeight="Bold" Foreground="#F0F9FF"
+                       FontSize="12" FontWeight="SemiBold" Foreground="#F0F9FF"
                        VerticalAlignment="Center"/>
         </StackPanel>
     </Border>

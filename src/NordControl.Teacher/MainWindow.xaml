@@ -575,7 +575,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusTextBlock" Grid.Column="0" Text="класс остановлен"
                            FontSize="12" Foreground="{StaticResource Brush.TextSecondary}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Nord Control v0.1.5" FontSize="11"
+                <TextBlock Grid.Column="1" Text="Nord Control v1.0.5" FontSize="11"
                            Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center"/>
             </Grid>
         </Border>

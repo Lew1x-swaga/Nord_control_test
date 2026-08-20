@@ -44,7 +44,7 @@ public partial class ToastWindow : Window
 
         _timer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(5.0)
+            Interval = TimeSpan.FromSeconds(isAlert ? 4.5 : 5.0)
         };
         _timer.Tick += (s, e) =>
         {
