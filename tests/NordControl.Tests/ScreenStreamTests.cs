@@ -249,4 +249,91 @@ public class ScreenStreamTests
         client1.Dispose();
         client2.Dispose();
     }
+
+    [Fact]
+    public async Task TwentyClients_OneSelected_ProcessListOnlyFromSelected()
+    {
+        var (udpPort, tcpPort) = TestPorts.NextPair();
+        await using var hub = new ClassHub(udpPort: udpPort, tcpPort: tcpPort);
+        await hub.StartClassAsync("LoadClass", "1234");
+
+        const int clientCount = 20;
+        var jpeg = new JpegFrame(64, 36, 1UL, new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 });
+        var procMsg = new WireMessage
+        {
+            Type = "process_list",
+            ActiveExe = "app.exe",
+            Items = [new ProcessItemInfo { Exe = "app.exe", Pid = 1, Title = "App" }]
+        };
+
+        var clients = new List<ClassClient>();
+        var runs = new List<Task>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        for (var i = 0; i < clientCount; i++)
+        {
+            var client = new ClassClient(
+                "1234",
+                udpPort: udpPort,
+                tcpPort: tcpPort,
+                manualTeacherIp: "127.0.0.1",
+                displayName: $"S{i:00}");
+            client.ProcessListCallback = () => procMsg;
+            client.CaptureFrameCallback = _ => Task.FromResult<JpegFrame?>(jpeg);
+            clients.Add(client);
+            runs.Add(client.RunAsync(cts.Token));
+        }
+
+        var readyAt = DateTime.UtcNow.AddSeconds(8);
+        while (DateTime.UtcNow < readyAt && clients.Count(c => c.Session.Status == SessionStatus.Online) < clientCount)
+        {
+            await Task.Delay(40);
+        }
+
+        Assert.Equal(clientCount, clients.Count(c => c.Session.Status == SessionStatus.Online));
+
+        var selectedId = clients[0].Session.StudentId!;
+        var processFromSelected = 0;
+        var processFromOthers = 0;
+        hub.ProcessListReceived += (id, _) =>
+        {
+            if (id == selectedId)
+            {
+                Interlocked.Increment(ref processFromSelected);
+            }
+            else
+            {
+                Interlocked.Increment(ref processFromOthers);
+            }
+        };
+
+        await hub.SelectStudentAsync(selectedId);
+        for (var i = 0; i < 40; i++)
+        {
+            if (clients[0].Session.StreamEnabled) break;
+            await Task.Delay(50);
+        }
+
+        Assert.True(clients[0].Session.StreamEnabled);
+        Assert.Equal(0, clients.Skip(1).Count(c => c.Session.StreamEnabled));
+
+        var until = DateTime.UtcNow.AddSeconds(3);
+        while (DateTime.UtcNow < until && Volatile.Read(ref processFromSelected) == 0)
+        {
+            await Task.Delay(50);
+        }
+
+        Assert.True(processFromSelected >= 1, $"selected process_list events={processFromSelected}");
+        Assert.Equal(0, processFromOthers);
+        Assert.Equal(clientCount, hub.Students.Count(s => s.Status == StudentHubStatus.Online));
+
+        cts.Cancel();
+        foreach (var client in clients)
+        {
+            client.RequestStop();
+            client.Dispose();
+        }
+
+        try { await Task.WhenAll(runs); } catch { }
+    }
 }

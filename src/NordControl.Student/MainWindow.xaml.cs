@@ -185,7 +185,7 @@ public partial class MainWindow : Window
                     LastNameTextBox.IsEnabled = false;
                     FirstNameTextBox.IsEnabled = false;
                     ConnectButton.IsEnabled = false;
-                    CloseButton.ToolTip = "Свернуть в трей";
+                    CloseButton.Visibility = Visibility.Collapsed;
                     ErrorTextBlock.Text = "";
                     HideDiscoveryHint();
                     if (_leaveLessonItem != null)
@@ -224,6 +224,7 @@ public partial class MainWindow : Window
                     LastNameTextBox.IsEnabled = true;
                     FirstNameTextBox.IsEnabled = true;
                     ConnectButton.IsEnabled = true;
+                    CloseButton.Visibility = Visibility.Visible;
                     CloseButton.ToolTip = "Закрыть";
                     _hasJoinedClass = false;
                     if (_leaveLessonItem != null)
@@ -367,6 +368,7 @@ public partial class MainWindow : Window
         LastNameTextBox.IsEnabled = true;
         FirstNameTextBox.IsEnabled = true;
         ConnectButton.IsEnabled = true;
+        CloseButton.Visibility = Visibility.Visible;
         CloseButton.ToolTip = "Закрыть";
         CollapseButton.Visibility = Visibility.Collapsed;
         SetJoinPanelVisible(true);

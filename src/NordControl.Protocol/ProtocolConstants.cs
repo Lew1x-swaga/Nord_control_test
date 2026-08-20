@@ -9,6 +9,7 @@ public static class ProtocolConstants
     public const int HeartbeatIntervalMs = 3000;
     public const int StaleStreamMs = 10_000;
     public const int ReconnectWindowMs = 120_000;
+    public const int UdpDiscoveryTimeoutMs = 2000;
     public const int MaxFramePayload = 4 * 1024 * 1024;
     public const byte JsonMessageType = 1;
     public const byte JpegMessageType = 2;

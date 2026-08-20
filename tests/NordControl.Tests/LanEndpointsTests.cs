@@ -120,4 +120,56 @@ public class LanEndpointsTests
             }
         }
     }
+
+    [Fact]
+    public void SameIpv4Subnet_UsesActualMask_NotWholeTenDot()
+    {
+        var mask24 = IPAddress.Parse("255.255.255.0");
+        Assert.True(LanEndpoints.SameIpv4Subnet(
+            IPAddress.Parse("10.0.0.10"), mask24, IPAddress.Parse("10.0.0.50")));
+        Assert.False(LanEndpoints.SameIpv4Subnet(
+            IPAddress.Parse("10.0.0.10"), mask24, IPAddress.Parse("10.8.0.2")));
+    }
+
+    [Theory]
+    [InlineData("Ethernet", false)]
+    [InlineData("Wi-Fi", false)]
+    [InlineData("WireGuard Tunnel", true)]
+    [InlineData("NordLynx", true)]
+    [InlineData("TAP-Windows Adapter V9", true)]
+    [InlineData("OpenVPN TAP", true)]
+    public void IsVpnAdapterName_DetectsCommonVpnNics(string name, bool expected)
+    {
+        Assert.Equal(expected, LanEndpoints.IsVpnAdapterName(name));
+    }
+
+    [Fact]
+    public void SelectAnnounceIpv4_PicksLanTenDot_NotVpnTenDot()
+    {
+        var locals = new[]
+        {
+            new LanUnicast(IPAddress.Parse("10.8.0.2"), IPAddress.Parse("255.255.255.0"), false),
+            new LanUnicast(IPAddress.Parse("10.0.0.10"), IPAddress.Parse("255.255.255.0"), true)
+        };
+
+        Assert.Equal("10.0.0.10", LanEndpoints.SelectAnnounceIpv4(IPAddress.Parse("10.0.0.50"), locals));
+        Assert.Equal("10.8.0.2", LanEndpoints.SelectAnnounceIpv4(IPAddress.Parse("10.8.0.9"), locals));
+    }
+
+    [Fact]
+    public void PickReachableTeacherIpv4_PrefersLanRemoteOverVpnAnnounce()
+    {
+        var locals = new[]
+        {
+            new LanUnicast(IPAddress.Parse("192.168.1.40"), IPAddress.Parse("255.255.255.0"), true),
+            new LanUnicast(IPAddress.Parse("10.8.0.5"), IPAddress.Parse("255.255.255.0"), false)
+        };
+
+        var picked = LanEndpoints.PickReachableTeacherIpv4(
+            "10.8.0.1",
+            IPAddress.Parse("192.168.1.5"),
+            locals);
+
+        Assert.Equal("192.168.1.5", picked);
+    }
 }

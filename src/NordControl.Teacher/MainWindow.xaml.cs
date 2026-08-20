@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -39,10 +40,10 @@ public class StudentItemViewModel : INotifyPropertyChanged
 {
     private static readonly SolidColorBrush OnlineFg = Freeze(16, 185, 129);
     private static readonly SolidColorBrush ReconnectFg = Freeze(217, 119, 6);
-    private static readonly SolidColorBrush OfflineFg = Freeze(148, 163, 184);
+    private static readonly SolidColorBrush OfflineFg = Freeze(100, 116, 139);
     private static readonly SolidColorBrush OnlineBg = Freeze(236, 253, 245);
     private static readonly SolidColorBrush ReconnectBg = Freeze(254, 243, 199);
-    private static readonly SolidColorBrush OfflineBg = Freeze(241, 245, 249);
+    private static readonly SolidColorBrush OfflineBg = Freeze(226, 232, 240);
 
     private string _displayName = string.Empty;
     private string _hostname = string.Empty;
@@ -139,12 +140,17 @@ public partial class MainWindow : Window
     private readonly ConcurrentDictionary<string, List<InstalledAppInfo>> _hintsByStudent = new();
 
     private bool _isClosingInProgress;
+    private TaskCompletionSource<bool>? _endClassConfirmTcs;
     private string _studentFilter = string.Empty;
     private bool _streamFullscreen;
     private WindowState _restoreWindowState = WindowState.Normal;
     private int _framesInWindow;
     private ulong _fpsWindowStartMs;
     private int _currentFps;
+    private readonly object _frameDecodeGate = new();
+    private int _frameDecodeBusy;
+    private string? _pendingFrameStudentId;
+    private JpegFrame _pendingFrame;
 
     public MainWindow()
     {
@@ -306,6 +312,13 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && EndClassConfirmOverlay.Visibility == Visibility.Visible)
+        {
+            DismissEndClassConfirm(false);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && _streamFullscreen)
         {
             ToggleStreamFullscreen();
@@ -456,6 +469,16 @@ public partial class MainWindow : Window
 
     private async void StopClassButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_hub.IsRunning || EndClassConfirmOverlay.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        if (!await ShowEndClassConfirmAsync())
+        {
+            return;
+        }
+
         StopClassButton.IsEnabled = false;
         try
         {
@@ -477,6 +500,47 @@ public partial class MainWindow : Window
             });
             UpdateUiState(isRunning: false);
         }
+    }
+
+    private Task<bool> ShowEndClassConfirmAsync()
+    {
+        _endClassConfirmTcs?.TrySetResult(false);
+        _endClassConfirmTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EndClassConfirmOverlay.Visibility = Visibility.Visible;
+        EndClassNoButton.Focus();
+        return _endClassConfirmTcs.Task;
+    }
+
+    private void DismissEndClassConfirm(bool confirmed)
+    {
+        if (EndClassConfirmOverlay.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        EndClassConfirmOverlay.Visibility = Visibility.Collapsed;
+        _endClassConfirmTcs?.TrySetResult(confirmed);
+    }
+
+    private void EndClassYesButton_Click(object sender, RoutedEventArgs e)
+    {
+        DismissEndClassConfirm(true);
+    }
+
+    private void EndClassNoButton_Click(object sender, RoutedEventArgs e)
+    {
+        DismissEndClassConfirm(false);
+    }
+
+    private void EndClassConfirmScrim_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        DismissEndClassConfirm(false);
+        e.Handled = true;
+    }
+
+    private void EndClassConfirmCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
     }
 
     private async void StudentsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -525,13 +589,56 @@ public partial class MainWindow : Window
         if (studentId != _hub.SelectedStudentId || frame.Data == null || frame.Data.Length == 0)
             return;
 
-        Task.Run(() =>
+        lock (_frameDecodeGate)
         {
+            _pendingFrameStudentId = studentId;
+            _pendingFrame = frame;
+        }
+
+        if (Interlocked.CompareExchange(ref _frameDecodeBusy, 1, 0) == 0)
+        {
+            _ = Task.Run(DecodePendingFrames);
+        }
+    }
+
+    private void DecodePendingFrames()
+    {
+        while (true)
+        {
+            string? studentId;
+            JpegFrame frame;
+            lock (_frameDecodeGate)
+            {
+                studentId = _pendingFrameStudentId;
+                frame = _pendingFrame;
+                _pendingFrameStudentId = null;
+                _pendingFrame = default;
+            }
+
+            if (studentId == null || frame.Data == null || frame.Data.Length == 0)
+            {
+                Interlocked.Exchange(ref _frameDecodeBusy, 0);
+                var hasPending = false;
+                lock (_frameDecodeGate)
+                {
+                    hasPending = _pendingFrameStudentId != null;
+                }
+
+                if (hasPending && Interlocked.CompareExchange(ref _frameDecodeBusy, 1, 0) == 0)
+                {
+                    continue;
+                }
+
+                return;
+            }
+
+            if (studentId != _hub.SelectedStudentId)
+            {
+                continue;
+            }
+
             try
             {
-                if (studentId != _hub.SelectedStudentId)
-                    return;
-
                 using var ms = new MemoryStream(frame.Data);
                 var bitmap = new BitmapImage();
                 bitmap.BeginInit();
@@ -542,21 +649,23 @@ public partial class MainWindow : Window
 
                 Dispatcher.InvokeAsync(() =>
                 {
-                    if (studentId == _hub.SelectedStudentId)
+                    if (studentId != _hub.SelectedStudentId)
                     {
-                        ScreenImage.Source = bitmap;
-                        if (_streamFullscreen)
-                            FullscreenImage.Source = bitmap;
-                        WaitingForFrameTextBlock.Visibility = Visibility.Collapsed;
-                        UpdateStreamMeta(frame.Width, frame.Height, frame.TimestampMs);
+                        return;
                     }
+
+                    ScreenImage.Source = bitmap;
+                    if (_streamFullscreen)
+                        FullscreenImage.Source = bitmap;
+                    WaitingForFrameTextBlock.Visibility = Visibility.Collapsed;
+                    UpdateStreamMeta(frame.Width, frame.Height, frame.TimestampMs);
                 });
             }
             catch
             {
                 // Ignore rendering errors on broken frames
             }
-        });
+        }
     }
 
     private void OnProcessListReceived(string studentId, WireMessage msg)
@@ -648,10 +757,8 @@ public partial class MainWindow : Window
 
     private string FormatClassRunningStatus()
     {
-        var ips = LanEndpoints.GetLocalUnicastIpv4();
-        var ipText = ips.Count > 0 ? string.Join(", ", ips) : "нет LAN IP";
         var online = _students.Count(s => s.Status == StudentHubStatus.Online);
-        return $"класс · {ipText} · порт {_hub.TcpPort} · учеников: {online}";
+        return $"класс запущен · порт {_hub.TcpPort} · учеников: {online}";
     }
 
     private void OnStudentJoined(ConnectedStudent student)
@@ -1285,6 +1392,16 @@ public partial class MainWindow : Window
         if (_hub.IsRunning)
         {
             e.Cancel = true;
+            if (EndClassConfirmOverlay.Visibility == Visibility.Visible)
+            {
+                return;
+            }
+
+            if (!await ShowEndClassConfirmAsync())
+            {
+                return;
+            }
+
             _isClosingInProgress = true;
             IsEnabled = false;
 

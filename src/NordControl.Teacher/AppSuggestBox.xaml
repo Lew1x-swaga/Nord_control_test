@@ -4,7 +4,7 @@
              LostKeyboardFocus="OnLostKeyboardFocus">
     <Grid>
         <TextBox x:Name="QueryTextBox"
-                 Height="28" MinHeight="28"
+                 Height="32" MinHeight="32"
                  Tag="Найти программу…"
                  TextChanged="QueryTextBox_TextChanged"
                  PreviewKeyDown="QueryTextBox_PreviewKeyDown"

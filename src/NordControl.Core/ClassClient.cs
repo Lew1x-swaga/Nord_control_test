@@ -39,16 +39,10 @@ public class ClassClient : IAsyncDisposable, IDisposable
     public string? LastTeacherIp => _lastTeacherIp;
     public int? LastTeacherTcpPort => _lastTeacherTcpPort;
 
-    public int UdpPort => _udpPort;
-    public int TcpPort => _tcpPort;
     public string Pin => _pin;
-    public string? ManualTeacherIp => _manualTeacherIp;
-    public string? DisplayName => _displayName;
     public StudentSession Session => _session;
-    public bool IsRunning => _cts != null && !_cts.IsCancellationRequested;
 
     public IAppBlocker AppBlocker => _appBlocker;
-    public IAppLauncher AppLauncher => _appLauncher;
     public Func<IReadOnlyList<InstalledAppInfo>>? InstalledAppsProvider { get; set; }
 
     public Func<CancellationToken, Task<JpegFrame?>>? CaptureFrameCallback { get; set; }
@@ -100,21 +94,6 @@ public class ClassClient : IAsyncDisposable, IDisposable
         }
     }
 
-    public void SetPin(string pin)
-    {
-        _pin = PinCode.Normalize(pin);
-    }
-
-    public void SetManualTeacherIp(string? manualTeacherIp)
-    {
-        _manualTeacherIp = string.IsNullOrWhiteSpace(manualTeacherIp) ? null : manualTeacherIp.Trim();
-    }
-
-    public void SetDisplayName(string? displayName)
-    {
-        _displayName = displayName;
-    }
-
     public void RequestStop()
     {
         _cts?.Cancel();
@@ -161,7 +140,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
                     }
 
                     var (ip, port) = await DiscoverTeacherAsync(token);
-                    if (string.IsNullOrEmpty(ip))
+                    if (string.IsNullOrEmpty(ip) || !LanEndpoints.IsClassroomIpv4(ip))
                     {
                         await Task.Delay(500, token);
                         continue;
@@ -182,8 +161,8 @@ public class ClassClient : IAsyncDisposable, IDisposable
                         var reconnected = await TryReconnectAsync(targetIp, targetPort, token);
                         if (!reconnected)
                         {
-                            var (discoveredIp, discoveredPort) = await DiscoverTeacherAsync(token, timeoutMs: 2000);
-                            if (!string.IsNullOrEmpty(discoveredIp))
+                            var (discoveredIp, discoveredPort) = await DiscoverTeacherAsync(token);
+                            if (!string.IsNullOrEmpty(discoveredIp) && LanEndpoints.IsClassroomIpv4(discoveredIp))
                             {
                                 _lastTeacherIp = discoveredIp;
                                 _lastTeacherTcpPort = discoveredPort;
@@ -193,8 +172,8 @@ public class ClassClient : IAsyncDisposable, IDisposable
                     }
                     else
                     {
-                        var (discoveredIp, discoveredPort) = await DiscoverTeacherAsync(token, timeoutMs: 2000);
-                        if (!string.IsNullOrEmpty(discoveredIp))
+                        var (discoveredIp, discoveredPort) = await DiscoverTeacherAsync(token);
+                        if (!string.IsNullOrEmpty(discoveredIp) && LanEndpoints.IsClassroomIpv4(discoveredIp))
                         {
                             _lastTeacherIp = discoveredIp;
                             _lastTeacherTcpPort = discoveredPort;
@@ -236,7 +215,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
         }
     }
 
-    private async Task<(string? ip, int port)> DiscoverTeacherAsync(CancellationToken ct, int timeoutMs = 2000)
+    private async Task<(string? ip, int port)> DiscoverTeacherAsync(CancellationToken ct, int timeoutMs = ProtocolConstants.UdpDiscoveryTimeoutMs)
     {
         if (!string.IsNullOrEmpty(_manualTeacherIp))
         {
@@ -248,68 +227,195 @@ public class ClassClient : IAsyncDisposable, IDisposable
             return (_manualTeacherIp, _tcpPort);
         }
 
-        using var udp = new UdpClient(new IPEndPoint(IPAddress.Any, 0));
-        try
+        var sockets = CreateDiscoverySockets();
+        if (sockets.Count == 0)
         {
-            udp.EnableBroadcast = true;
+            return (null, 0);
         }
-        catch { }
 
         var probeBytes = Encoding.UTF8.GetBytes(UdpPackets.Probe());
-
         try
         {
-            await SendUdpProbesAsync(udp, probeBytes);
-            await SendUdpProbesAsync(udp, probeBytes);
+            await SendUdpProbesAsync(sockets, probeBytes);
+            await SendUdpProbesAsync(sockets, probeBytes);
         }
         catch { }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(timeoutMs);
-        using var reg = timeoutCts.Token.Register(() =>
-        {
-            try { udp.Dispose(); } catch { }
-        });
+        using var reg = timeoutCts.Token.Register(() => DisposeSockets(sockets));
+
+        var locals = LanEndpoints.GetLanUnicasts();
+        var preferredFound = new TaskCompletionSource<(string ip, int port)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fallbackGate = new object();
+        string? fallbackIp = null;
+        var fallbackPort = 0;
+
+        var receiveTasks = sockets.Select(udp => ReceiveAnnouncesAsync(
+            udp,
+            locals,
+            preferredFound,
+            (ip, port) =>
+            {
+                lock (fallbackGate)
+                {
+                    fallbackIp = ip;
+                    fallbackPort = port;
+                }
+            },
+            timeoutCts.Token)).ToArray();
 
         try
         {
-            while (!timeoutCts.Token.IsCancellationRequested)
+            await Task.WhenAny(preferredFound.Task, Task.WhenAll(receiveTasks));
+            if (preferredFound.Task.IsCompletedSuccessfully)
             {
-                var res = await udp.ReceiveAsync(timeoutCts.Token);
-                var text = Encoding.UTF8.GetString(res.Buffer);
-
-                if (UdpPackets.TryParseAnnounce(text, out var className, out var ip, out var tcpPort))
-                {
-                    var effectiveIp = ip;
-                    if (effectiveIp == "0.0.0.0" || string.IsNullOrEmpty(effectiveIp))
-                    {
-                        effectiveIp = res.RemoteEndPoint.Address.ToString();
-                    }
-
-                    return (effectiveIp, tcpPort);
-                }
+                return preferredFound.Task.Result;
             }
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
-            // Timeout or socket disposed on timeout
+        }
+        finally
+        {
+            DisposeSockets(sockets);
+        }
+
+        lock (fallbackGate)
+        {
+            if (!string.IsNullOrEmpty(fallbackIp) && LanEndpoints.IsClassroomIpv4(fallbackIp))
+            {
+                return (fallbackIp, fallbackPort);
+            }
         }
 
         return (null, 0);
     }
 
-    private async Task SendUdpProbesAsync(UdpClient udp, byte[] probeBytes)
+    private List<UdpClient> CreateDiscoverySockets()
     {
-        foreach (var dest in LanEndpoints.GetUdpProbeDestinations(_udpPort))
+        var sockets = new List<UdpClient>();
+
+        void TryAdd(IPEndPoint local)
         {
             try
             {
-                await udp.SendAsync(probeBytes, probeBytes.Length, dest);
+                var udp = new UdpClient(local);
+                try
+                {
+                    udp.EnableBroadcast = true;
+                }
+                catch
+                {
+                }
+
+                sockets.Add(udp);
             }
             catch
             {
             }
         }
+
+        TryAdd(new IPEndPoint(IPAddress.Any, 0));
+        TryAdd(new IPEndPoint(IPAddress.Loopback, 0));
+
+        foreach (var nic in LanEndpoints.GetLanUnicasts())
+        {
+            TryAdd(new IPEndPoint(nic.Address, 0));
+        }
+
+        return sockets;
+    }
+
+    private static async Task ReceiveAnnouncesAsync(
+        UdpClient udp,
+        IReadOnlyList<LanUnicast> locals,
+        TaskCompletionSource<(string ip, int port)> preferredFound,
+        Action<string, int> setFallback,
+        CancellationToken ct)
+    {
+        var hasPreferredLan = locals.Any(l => l.IsPreferredLan);
+        try
+        {
+            while (!ct.IsCancellationRequested && !preferredFound.Task.IsCompleted)
+            {
+                var res = await udp.ReceiveAsync(ct);
+                var text = Encoding.UTF8.GetString(res.Buffer);
+                if (!UdpPackets.TryParseAnnounce(text, out _, out var ip, out var tcpPort))
+                {
+                    continue;
+                }
+
+                if (ip == "0.0.0.0" || string.IsNullOrEmpty(ip))
+                {
+                    ip = res.RemoteEndPoint.Address.ToString();
+                }
+
+                var picked = LanEndpoints.PickReachableTeacherIpv4(ip, res.RemoteEndPoint.Address, locals);
+                if (string.IsNullOrEmpty(picked) || !LanEndpoints.IsClassroomIpv4(picked))
+                {
+                    continue;
+                }
+
+                if (!hasPreferredLan
+                    || (IPAddress.TryParse(picked, out var pickedIp) && IPAddress.IsLoopback(pickedIp))
+                    || SharesPreferredLan(picked, locals))
+                {
+                    preferredFound.TrySetResult((picked, tcpPort));
+                    return;
+                }
+
+                setFallback(picked, tcpPort);
+            }
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    private static bool SharesPreferredLan(string ip, IReadOnlyList<LanUnicast> locals)
+    {
+        if (!IPAddress.TryParse(ip, out var address))
+        {
+            return false;
+        }
+
+        return locals.Any(local =>
+            local.IsPreferredLan && LanEndpoints.SameIpv4Subnet(local.Address, local.Mask, address));
+    }
+
+    private async Task SendUdpProbesAsync(IReadOnlyList<UdpClient> sockets, byte[] probeBytes)
+    {
+        var destinations = LanEndpoints.GetUdpProbeDestinations(_udpPort);
+        foreach (var udp in sockets)
+        {
+            foreach (var dest in destinations)
+            {
+                try
+                {
+                    await udp.SendAsync(probeBytes, probeBytes.Length, dest);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    private static void DisposeSockets(List<UdpClient> sockets)
+    {
+        foreach (var udp in sockets)
+        {
+            try
+            {
+                udp.Dispose();
+            }
+            catch
+            {
+            }
+        }
+
+        sockets.Clear();
     }
 
     private static async Task<WireMessage?> ReadJoinHandshakeAsync(NetworkStream stream, CancellationToken ct)
@@ -613,13 +719,16 @@ public class ClassClient : IAsyncDisposable, IDisposable
         {
             try
             {
-                if (_session.Status == SessionStatus.Online && ProcessListCallback != null)
+                if (_session.Status != SessionStatus.Online || !_session.StreamEnabled || ProcessListCallback == null)
                 {
-                    var procMsg = ProcessListCallback();
-                    if (procMsg != null)
-                    {
-                        await TrySendJsonMessageAsync(stream, sendLock, procMsg, ct, 500);
-                    }
+                    await Task.Delay(100, ct);
+                    continue;
+                }
+
+                var procMsg = ProcessListCallback();
+                if (procMsg != null)
+                {
+                    await TrySendJsonMessageAsync(stream, sendLock, procMsg, ct, 500);
                 }
 
                 await Task.Delay(2500, ct);

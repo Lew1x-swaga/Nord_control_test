@@ -59,7 +59,7 @@ public partial class ToastWindow : Window
     {
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Left + Math.Max(0, (workArea.Width - ActualWidth) / 2);
-        Top = workArea.Top + 40;
+        Top = workArea.Top + 110;
         _timer.Start();
     }
 

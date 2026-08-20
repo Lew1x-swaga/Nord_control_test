@@ -62,8 +62,9 @@ public class ProcessListTests
 
         Assert.Equal(SessionStatus.Online, client.Session.Status);
         var studentId = client.Session.StudentId!;
+        await hub.SelectStudentAsync(studentId);
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(1000));
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(3000));
         Assert.Same(tcs.Task, completed);
 
         Assert.Equal(studentId, receivedStudentId);

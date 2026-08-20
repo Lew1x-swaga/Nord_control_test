@@ -4,6 +4,8 @@ using System.Net.Sockets;
 
 namespace NordControl.Core.Helpers;
 
+public readonly record struct LanUnicast(IPAddress Address, IPAddress Mask, bool IsPreferredLan);
+
 public static class LanEndpoints
 {
     public static bool IsClassroomIpv4(string? value)
@@ -58,29 +60,139 @@ public static class LanEndpoints
             or NetworkInterfaceType.Loopback;
     }
 
+    public static bool IsVpnAdapterName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var n = name.ToUpperInvariant();
+        return n.Contains("VPN", StringComparison.Ordinal)
+            || n.Contains("WIREGUARD", StringComparison.Ordinal)
+            || n.Contains("WINTUN", StringComparison.Ordinal)
+            || n.Contains("NORDLYNX", StringComparison.Ordinal)
+            || n.Contains("OPENVPN", StringComparison.Ordinal)
+            || n.Contains("TAP-WINDOWS", StringComparison.Ordinal)
+            || n.Contains("TAP-WIN", StringComparison.Ordinal)
+            || n.Contains("TUNNEL", StringComparison.Ordinal)
+            || n.Contains("ZEROTIER", StringComparison.Ordinal)
+            || n.Contains("ZERO TIER", StringComparison.Ordinal)
+            || n.Contains("HAMACHI", StringComparison.Ordinal)
+            || n.Contains("TAILSCALE", StringComparison.Ordinal)
+            || n.Contains("RADMIN", StringComparison.Ordinal)
+            || n.Contains("SOFTETHER", StringComparison.Ordinal)
+            || n.Contains("PROTON", StringComparison.Ordinal)
+            || n.Contains("MULLVAD", StringComparison.Ordinal)
+            || n.Contains("CLOUDFLARE", StringComparison.Ordinal)
+            || n.Contains("WARP", StringComparison.Ordinal);
+    }
+
+    public static bool SameIpv4Subnet(IPAddress address, IPAddress mask, IPAddress other)
+    {
+        var a = address.GetAddressBytes();
+        var m = mask.GetAddressBytes();
+        var b = other.GetAddressBytes();
+        if (a.Length != 4 || m.Length != 4 || b.Length != 4)
+        {
+            return false;
+        }
+
+        if (m.All(x => x == 0))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < 4; i++)
+        {
+            if ((a[i] & m[i]) != (b[i] & m[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static string GetAnnounceIpv4(IPAddress remoteAddress)
+    {
+        return SelectAnnounceIpv4(remoteAddress, GetLanUnicasts());
+    }
+
+    public static string SelectAnnounceIpv4(IPAddress remoteAddress, IReadOnlyList<LanUnicast> locals)
     {
         if (IPAddress.IsLoopback(remoteAddress))
         {
             return "127.0.0.1";
         }
 
-        var classroom = GetLocalUnicastIpv4();
-        if (classroom.Count == 0)
+        if (locals.Count == 0)
         {
             return "127.0.0.1";
         }
 
-        if (remoteAddress.AddressFamily == AddressFamily.InterNetwork)
+        LanUnicast? preferredMatch = null;
+        LanUnicast? anyMatch = null;
+        foreach (var local in locals)
         {
-            var match = classroom.FirstOrDefault(ip => SameClassroomSubnet(ip, remoteAddress));
-            if (match != null)
+            if (!SameIpv4Subnet(local.Address, local.Mask, remoteAddress))
             {
-                return match.ToString();
+                continue;
             }
+
+            if (local.IsPreferredLan)
+            {
+                preferredMatch = local;
+                break;
+            }
+
+            anyMatch ??= local;
         }
 
-        return classroom[0].ToString();
+        if (preferredMatch.HasValue)
+        {
+            return preferredMatch.Value.Address.ToString();
+        }
+
+        if (anyMatch.HasValue)
+        {
+            return anyMatch.Value.Address.ToString();
+        }
+
+        var preferred = locals.FirstOrDefault(l => l.IsPreferredLan);
+        if (preferred.Address != null)
+        {
+            return preferred.Address.ToString();
+        }
+
+        return locals[0].Address.ToString();
+    }
+
+    public static string? PickReachableTeacherIpv4(
+        string? announcedIp,
+        IPAddress? remoteAddress,
+        IReadOnlyList<LanUnicast> localUnicasts)
+    {
+        var candidates = new List<string>();
+        AddClassroomCandidate(candidates, announcedIp);
+        if (remoteAddress != null)
+        {
+            AddClassroomCandidate(candidates, remoteAddress.ToString());
+        }
+
+        var preferred = MatchCandidate(candidates, localUnicasts, nic => nic.IsPreferredLan);
+        if (preferred != null)
+        {
+            return preferred;
+        }
+
+        var anySubnet = MatchCandidate(candidates, localUnicasts, _ => true);
+        if (anySubnet != null)
+        {
+            return anySubnet;
+        }
+
+        return candidates.Count > 0 ? candidates[0] : null;
     }
 
     public static IPAddress GetBroadcast(IPAddress address, IPAddress mask)
@@ -101,10 +213,10 @@ public static class LanEndpoints
         return new IPAddress(broadcast);
     }
 
-    public static IReadOnlyList<IPAddress> GetLocalUnicastIpv4()
+    public static IReadOnlyList<LanUnicast> GetLanUnicasts()
     {
-        var preferred = new List<IPAddress>();
-        var fallback = new List<IPAddress>();
+        var preferred = new List<LanUnicast>();
+        var fallback = new List<LanUnicast>();
         try
         {
             foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
@@ -114,41 +226,8 @@ public static class LanEndpoints
                     continue;
                 }
 
-                var target = IsPreferredLanNic(nic.NetworkInterfaceType) ? preferred : fallback;
-                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
-                {
-                    if (!IsAdvertisableUnicast(addr.Address))
-                    {
-                        continue;
-                    }
-
-                    AddUnique(target, addr.Address);
-                }
-            }
-        }
-        catch
-        {
-        }
-
-        return preferred.Count > 0 ? preferred : fallback;
-    }
-
-    public static IReadOnlyList<IPEndPoint> GetUdpProbeDestinations(int udpPort)
-    {
-        var result = new List<IPEndPoint>
-        {
-            new(IPAddress.Broadcast, udpPort),
-            new(IPAddress.Loopback, udpPort)
-        };
-
-        try
-        {
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (nic.OperationalStatus != OperationalStatus.Up || IsExcludedNic(nic.NetworkInterfaceType))
-                {
-                    continue;
-                }
+                var vpnLike = IsVpnAdapterName(nic.Name) || IsVpnAdapterName(nic.Description);
+                var isPreferred = IsPreferredLanNic(nic.NetworkInterfaceType) && !vpnLike;
 
                 foreach (var addr in nic.GetIPProperties().UnicastAddresses)
                 {
@@ -162,10 +241,48 @@ public static class LanEndpoints
                         continue;
                     }
 
-                    var broadcast = GetBroadcast(addr.Address, addr.IPv4Mask);
-                    AddUnique(result, new IPEndPoint(broadcast, udpPort));
-                    AddUnique(result, new IPEndPoint(addr.Address, udpPort));
+                    var item = new LanUnicast(addr.Address, addr.IPv4Mask, isPreferred);
+                    if (isPreferred)
+                    {
+                        AddUnique(preferred, item);
+                    }
+                    else
+                    {
+                        AddUnique(fallback, item);
+                    }
                 }
+            }
+        }
+        catch
+        {
+        }
+
+        preferred.AddRange(fallback);
+        return preferred;
+    }
+
+    public static IReadOnlyList<IPAddress> GetLocalUnicastIpv4()
+    {
+        var all = GetLanUnicasts();
+        var preferred = all.Where(u => u.IsPreferredLan).Select(u => u.Address).ToList();
+        return preferred.Count > 0 ? preferred : all.Select(u => u.Address).ToList();
+    }
+
+    public static IReadOnlyList<IPEndPoint> GetUdpProbeDestinations(int udpPort)
+    {
+        var result = new List<IPEndPoint>
+        {
+            new(IPAddress.Broadcast, udpPort),
+            new(IPAddress.Loopback, udpPort)
+        };
+
+        try
+        {
+            foreach (var nic in GetLanUnicasts())
+            {
+                var broadcast = GetBroadcast(nic.Address, nic.Mask);
+                AddUnique(result, new IPEndPoint(broadcast, udpPort));
+                AddUnique(result, new IPEndPoint(nic.Address, udpPort));
             }
         }
         catch
@@ -195,41 +312,59 @@ public static class LanEndpoints
         return true;
     }
 
-    private static bool SameClassroomSubnet(IPAddress local, IPAddress remote)
+    private static void AddClassroomCandidate(List<string> candidates, string? value)
     {
-        var a = local.GetAddressBytes();
-        var b = remote.GetAddressBytes();
-        if (a.Length != 4 || b.Length != 4)
-        {
-            return false;
-        }
-
-        if (a[0] == 192 && a[1] == 168)
-        {
-            return b[0] == 192 && b[1] == 168 && a[2] == b[2];
-        }
-
-        if (a[0] == 10)
-        {
-            return b[0] == 10;
-        }
-
-        if (a[0] == 172 && a[1] >= 16 && a[1] <= 31)
-        {
-            return b[0] == 172 && b[1] >= 16 && b[1] <= 31;
-        }
-
-        return false;
-    }
-
-    private static void AddUnique(List<IPAddress> list, IPAddress address)
-    {
-        if (list.Any(existing => existing.Equals(address)))
+        if (!IsClassroomIpv4(value))
         {
             return;
         }
 
-        list.Add(address);
+        var normalized = value!.Trim();
+        if (candidates.Any(existing => existing == normalized))
+        {
+            return;
+        }
+
+        candidates.Add(normalized);
+    }
+
+    private static string? MatchCandidate(
+        List<string> candidates,
+        IReadOnlyList<LanUnicast> localUnicasts,
+        Func<LanUnicast, bool> nicFilter)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (!IPAddress.TryParse(candidate, out var ip))
+            {
+                continue;
+            }
+
+            foreach (var local in localUnicasts)
+            {
+                if (!nicFilter(local))
+                {
+                    continue;
+                }
+
+                if (SameIpv4Subnet(local.Address, local.Mask, ip))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static void AddUnique(List<LanUnicast> list, LanUnicast item)
+    {
+        if (list.Any(existing => existing.Address.Equals(item.Address)))
+        {
+            return;
+        }
+
+        list.Add(item);
     }
 
     private static void AddUnique(List<IPEndPoint> list, IPEndPoint endpoint)

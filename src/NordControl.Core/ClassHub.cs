@@ -56,10 +56,7 @@ public class ClassHub : IAsyncDisposable
     private volatile string? _desiredStudentId;
     private readonly SemaphoreSlim _selectLock = new(1, 1);
 
-    public int UdpPort => _udpPort;
     public int TcpPort => _tcpPort;
-    public string? ClassName => _className;
-    public string? Pin => _pin;
     public bool IsRunning => _cts != null && !_cts.IsCancellationRequested;
     public string? SelectedStudentId => _selectedStudentId;
 
@@ -71,7 +68,6 @@ public class ClassHub : IAsyncDisposable
     public event Action<string, JpegFrame>? ScreenFrameReceived;
     public event Action<string, WireMessage>? ProcessListReceived;
     public event Action<string, IReadOnlyList<InstalledAppInfo>>? InstalledHintsReceived;
-    public event Action<string?>? SelectedStudentChanged;
 
     private sealed class StudentConnection
     {
@@ -135,7 +131,6 @@ public class ClassHub : IAsyncDisposable
                 }
 
                 _selectedStudentId = target;
-                SelectedStudentChanged?.Invoke(target);
 
                 if (previousId != null && _activeConnections.TryGetValue(previousId, out var prevConn))
                 {
@@ -160,8 +155,6 @@ public class ClassHub : IAsyncDisposable
             _selectLock.Release();
         }
     }
-
-    public Task SelectStudent(string? studentId) => SelectStudentAsync(studentId);
 
     public async Task<bool> SendLaunchAppAsync(string studentId, string exe, string? launchTarget = null)
     {
@@ -625,7 +618,10 @@ public class ClassHub : IAsyncDisposable
                     {
                         if (wireMsg.Type == "process_list")
                         {
-                            ProcessListReceived?.Invoke(studentId, wireMsg);
+                            if (_selectedStudentId == studentId)
+                            {
+                                ProcessListReceived?.Invoke(studentId, wireMsg);
+                            }
                         }
                         else if (wireMsg.Type == "installed_hints")
                         {
