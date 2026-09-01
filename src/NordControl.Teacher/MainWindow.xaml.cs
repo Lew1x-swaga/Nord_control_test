@@ -14,6 +14,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using NordControl.Core;
 using NordControl.Core.Helpers;
 using NordControl.Core.Policies;
@@ -47,7 +48,9 @@ public class StudentItemViewModel : INotifyPropertyChanged
 
     private string _displayName = string.Empty;
     private string _hostname = string.Empty;
+    private string _groupName = string.Empty;
     private StudentHubStatus _status;
+    private ImageSource? _previewImage;
 
     private static SolidColorBrush Freeze(byte r, byte g, byte b)
     {
@@ -84,6 +87,23 @@ public class StudentItemViewModel : INotifyPropertyChanged
         }
     }
 
+    public string GroupName
+    {
+        get => _groupName;
+        set
+        {
+            var next = value ?? string.Empty;
+            if (_groupName != next)
+            {
+                _groupName = next;
+                OnPropertyChanged(nameof(GroupName));
+                OnPropertyChanged(nameof(HasGroup));
+            }
+        }
+    }
+
+    public bool HasGroup => !string.IsNullOrEmpty(_groupName);
+
     public StudentHubStatus Status
     {
         get => _status;
@@ -92,13 +112,45 @@ public class StudentItemViewModel : INotifyPropertyChanged
             if (_status != value)
             {
                 _status = value;
+                if (_status != StudentHubStatus.Online)
+                {
+                    PreviewImage = null;
+                }
+
                 OnPropertyChanged(nameof(Status));
                 OnPropertyChanged(nameof(StatusText));
                 OnPropertyChanged(nameof(StatusForeground));
                 OnPropertyChanged(nameof(StatusBackground));
+                OnPropertyChanged(nameof(PreviewPlaceholderText));
             }
         }
     }
+
+    public ImageSource? PreviewImage
+    {
+        get => _previewImage;
+        set
+        {
+            if (!ReferenceEquals(_previewImage, value))
+            {
+                _previewImage = value;
+                OnPropertyChanged(nameof(PreviewImage));
+                OnPropertyChanged(nameof(HasPreviewImage));
+                OnPropertyChanged(nameof(ShowPreviewPlaceholder));
+            }
+        }
+    }
+
+    public bool HasPreviewImage => _previewImage != null;
+
+    public bool ShowPreviewPlaceholder => _previewImage == null;
+
+    public string PreviewPlaceholderText => Status switch
+    {
+        StudentHubStatus.Online => "ожидание…",
+        StudentHubStatus.Reconnecting => "переподключение",
+        _ => "нет"
+    };
 
     public string StatusText => Status switch
     {
@@ -129,10 +181,38 @@ public class StudentItemViewModel : INotifyPropertyChanged
     }
 }
 
+public class GroupItemViewModel : INotifyPropertyChanged
+{
+    private string _name = string.Empty;
+
+    public string Id { get; init; } = string.Empty;
+
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (_name != value)
+            {
+                _name = value;
+                OnPropertyChanged(nameof(Name));
+            }
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
 public partial class MainWindow : Window
 {
     private readonly ClassHub _hub;
     private readonly ObservableCollection<StudentItemViewModel> _students = new();
+    private readonly ObservableCollection<GroupItemViewModel> _groupItems = new();
     private readonly ObservableCollection<ProcessRowViewModel> _processes = new();
     private readonly ObservableCollection<InstalledAppInfo> _quickApps = new();
     private readonly ObservableCollection<string> _blockedApps = new();
@@ -141,7 +221,13 @@ public partial class MainWindow : Window
 
     private bool _isClosingInProgress;
     private TaskCompletionSource<bool>? _endClassConfirmTcs;
+    private TaskCompletionSource<string?>? _groupPromptTcs;
     private string _studentFilter = string.Empty;
+    private StudentListLayout _studentListLayout = StudentListLayout.List;
+    private readonly ListCollectionView _previewStudentsView;
+    private bool _screenGridMode;
+    private bool _previewBroadcastOn;
+    private bool _suppressStudentListSelection;
     private bool _streamFullscreen;
     private WindowState _restoreWindowState = WindowState.Normal;
     private int _framesInWindow;
@@ -151,6 +237,13 @@ public partial class MainWindow : Window
     private int _frameDecodeBusy;
     private string? _pendingFrameStudentId;
     private JpegFrame _pendingFrame;
+    private readonly object _previewDecodeGate = new();
+    private readonly Dictionary<string, JpegFrame> _pendingPreviewFrames = new(StringComparer.Ordinal);
+    private int _previewDecodeBusy;
+    private UniformGrid? _studentListUniformGrid;
+    private int _lastStudentListColumns = int.MinValue;
+    private UniformGrid? _previewUniformGrid;
+    private int _lastPreviewColumns = int.MinValue;
 
     public MainWindow()
     {
@@ -161,21 +254,28 @@ public partial class MainWindow : Window
         _hub.StudentStatusChanged += OnStudentStatusChanged;
         _hub.StudentLeft += OnStudentLeft;
         _hub.ScreenFrameReceived += OnScreenFrameReceived;
+        _hub.PreviewFrameReceived += OnPreviewFrameReceived;
         _hub.ProcessListReceived += OnProcessListReceived;
         _hub.InstalledHintsReceived += OnInstalledHintsReceived;
 
         StudentsListBox.ItemsSource = _students;
+        GroupsListBox.ItemsSource = _groupItems;
         CollectionViewSource.GetDefaultView(_students).Filter = FilterStudent;
+        _previewStudentsView = new ListCollectionView(_students) { Filter = FilterStudent };
+        ScreenPreviewItemsControl.ItemsSource = _previewStudentsView;
         ProcessesListView.ItemsSource = _processes;
         QuickAppsListBox.ItemsSource = _quickApps;
         BlockedAppsListBox.ItemsSource = _blockedApps;
         HintsListView.ItemsSource = _selectedStudentHints;
 
         LoadPreset();
+        LoadUiSettings();
         GenerateNewPin();
         RefreshLanIpDisplay();
         UpdateUiState(isRunning: false);
         RefreshStudentCount();
+
+        TeacherMessageTextBox.MaxLength = ProtocolConstants.MaxTeacherMessageChars;
 
         LaunchAppSuggestBox.Placeholder = "Найти программу для запуска…";
         BlockAppSuggestBox.Placeholder = "Найти программу для блокировки…";
@@ -222,6 +322,236 @@ public partial class MainWindow : Window
     {
         _studentFilter = StudentSearchTextBox.Text.Trim();
         CollectionViewSource.GetDefaultView(_students).Refresh();
+        _previewStudentsView.Refresh();
+    }
+
+    private void LoadUiSettings()
+    {
+        var settings = TeacherUiSettingsManager.Load();
+        ApplyStudentListLayout(settings.Layout, persist: false);
+    }
+
+    private void SaveUiSettings()
+    {
+        TeacherUiSettingsManager.Save(new TeacherUiSettings { Layout = _studentListLayout });
+    }
+
+    private void StudentListLayoutButton_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyStudentListLayout(StudentListLayout.List, persist: true);
+    }
+
+    private void StudentGridLayoutButton_Click(object sender, RoutedEventArgs e)
+    {
+        ApplyStudentListLayout(StudentListLayout.Grid, persist: true);
+    }
+
+    private void StudentsListBox_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateStudentGridColumns();
+    }
+
+    private void ApplyStudentListLayout(StudentListLayout layout, bool persist)
+    {
+        var panelChanged = layout != _studentListLayout;
+        _studentListLayout = layout;
+        RefreshLayoutToggleAppearance();
+
+        if (panelChanged)
+        {
+            _studentListUniformGrid = null;
+            _lastStudentListColumns = int.MinValue;
+            var selected = StudentsListBox.SelectedItem;
+            _suppressStudentListSelection = true;
+            StudentsListBox.ItemsPanel = layout == StudentListLayout.Grid
+                ? (ItemsPanelTemplate)FindResource("StudentGridItemsPanel")
+                : (ItemsPanelTemplate)FindResource("StudentListItemsPanel");
+            StudentsListBox.ItemContainerStyle = layout == StudentListLayout.Grid
+                ? (Style)FindResource("Style.StudentGridItem")
+                : (Style)FindResource("Style.StudentListItem");
+            VirtualizingPanel.SetIsVirtualizing(StudentsListBox, layout == StudentListLayout.List);
+            ScrollViewer.SetCanContentScroll(StudentsListBox, layout == StudentListLayout.List);
+
+            _ = StudentsListBox.Dispatcher.InvokeAsync(() =>
+            {
+                try
+                {
+                    StudentsListBox.SelectedItem = selected;
+                    UpdateStudentGridColumns();
+                }
+                finally
+                {
+                    _suppressStudentListSelection = false;
+                }
+            }, DispatcherPriority.Loaded);
+        }
+        else
+        {
+            UpdateStudentGridColumns();
+        }
+
+        if (persist)
+        {
+            SaveUiSettings();
+        }
+    }
+
+    private void RefreshLayoutToggleAppearance()
+    {
+        var grid = _studentListLayout == StudentListLayout.Grid;
+        StudentListLayoutButton.Style = (Style)FindResource(grid ? "Style.GhostButton" : "Style.AccentButton");
+        StudentGridLayoutButton.Style = (Style)FindResource(grid ? "Style.AccentButton" : "Style.GhostButton");
+    }
+
+    private void UpdateStudentGridColumns()
+    {
+        if (_studentListLayout != StudentListLayout.Grid)
+        {
+            return;
+        }
+
+        var columns = StudentGridLayout.ColumnCount(StudentsListBox.ActualWidth);
+        ApplyCachedUniformGridColumns(ref _studentListUniformGrid, ref _lastStudentListColumns, StudentsListBox, columns);
+    }
+
+    private void RefreshScreenModeToggleAppearance()
+    {
+        OneScreenModeButton.Style = (Style)FindResource(_screenGridMode ? "Style.GhostButton" : "Style.AccentButton");
+        ScreenGridModeButton.Style = (Style)FindResource(_screenGridMode ? "Style.AccentButton" : "Style.GhostButton");
+    }
+
+    private async void OneScreenModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ApplyScreenGridModeAsync(false);
+    }
+
+    private async void ScreenGridModeButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ApplyScreenGridModeAsync(true);
+    }
+
+    private async void PreviewTile_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not StudentItemViewModel vm)
+        {
+            return;
+        }
+
+        await ApplyScreenGridModeAsync(false);
+
+        if (!ReferenceEquals(StudentsListBox.SelectedItem, vm) || StudentsListBox.SelectedItems.Count != 1)
+        {
+            _suppressStudentListSelection = true;
+            StudentsListBox.UnselectAll();
+            _suppressStudentListSelection = false;
+            StudentsListBox.SelectedItem = vm;
+        }
+    }
+
+    private async Task ApplyScreenGridModeAsync(bool grid)
+    {
+        _screenGridMode = grid;
+        RefreshScreenModeToggleAppearance();
+
+        if (grid && _hub.IsRunning)
+        {
+            ExitStreamFullscreenIfNeeded();
+            PlaceholderBorder.Visibility = Visibility.Collapsed;
+            StudentDetailGrid.Visibility = Visibility.Collapsed;
+            ScreenPreviewGridHost.Visibility = Visibility.Visible;
+            ScreenImage.Source = null;
+            FullscreenImage.Source = null;
+            _ = ScreenPreviewItemsControl.Dispatcher.InvokeAsync(
+                UpdatePreviewGridColumns, DispatcherPriority.Loaded);
+            await _hub.SelectStudentAsync(null);
+            await EnablePreviewBroadcastAsync();
+            return;
+        }
+
+        await DisablePreviewBroadcastAsync();
+        ClearAllPreviewBitmaps();
+        ScreenPreviewGridHost.Visibility = Visibility.Collapsed;
+
+        if (!grid && _hub.IsRunning && StudentsListBox.SelectedItem is StudentItemViewModel selected)
+        {
+            PlaceholderBorder.Visibility = Visibility.Collapsed;
+            StudentDetailGrid.Visibility = Visibility.Visible;
+            ScreenImage.Source = null;
+            FullscreenImage.Source = null;
+            WaitingForFrameTextBlock.Visibility = Visibility.Visible;
+            await _hub.SelectStudentAsync(selected.Id);
+        }
+        else
+        {
+            PlaceholderBorder.Visibility = Visibility.Visible;
+            StudentDetailGrid.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async Task EnablePreviewBroadcastAsync()
+    {
+        if (!_hub.IsRunning)
+        {
+            _previewBroadcastOn = false;
+            return;
+        }
+
+        await _hub.BroadcastPreviewEnableAsync();
+        _previewBroadcastOn = true;
+    }
+
+    private async Task DisablePreviewBroadcastAsync()
+    {
+        if (_previewBroadcastOn && _hub.IsRunning)
+        {
+            try
+            {
+                await _hub.BroadcastPreviewDisableAsync();
+            }
+            catch
+            {
+                // leave grid anyway
+            }
+        }
+
+        _previewBroadcastOn = false;
+    }
+
+    private void ClearAllPreviewBitmaps()
+    {
+        lock (_previewDecodeGate)
+        {
+            _pendingPreviewFrames.Clear();
+        }
+
+        foreach (var student in _students)
+        {
+            student.PreviewImage = null;
+        }
+    }
+
+    private void ScreenPreviewItemsControl_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdatePreviewGridColumns();
+    }
+
+    private void UpdatePreviewGridColumns()
+    {
+        if (!_screenGridMode || ScreenPreviewGridHost.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var columns = StudentGridLayout.ColumnCount(ScreenPreviewItemsControl.ActualWidth, minCardWidth: 180);
+        ApplyCachedUniformGridColumns(ref _previewUniformGrid, ref _lastPreviewColumns, ScreenPreviewItemsControl, columns);
+    }
+
+    private async Task SyncPreviewEnableIfGridAsync()
+    {
+        if (_screenGridMode && _hub.IsRunning)
+        {
+            await EnablePreviewBroadcastAsync();
+        }
     }
 
     private void RefreshStudentCount()
@@ -230,44 +560,204 @@ public partial class MainWindow : Window
         StudentCountTextBlock.Text = $"Онлайн: {online} / Всего: {_students.Count}";
     }
 
+    private void UpdateGroupsEnabled()
+    {
+        var running = _hub.IsRunning;
+        GroupsListBox.IsEnabled = running;
+        NewGroupButton.IsEnabled = running;
+        RenameGroupButton.IsEnabled = running;
+        DisbandGroupButton.IsEnabled = running;
+        AssignGroupButton.IsEnabled = running;
+        LaunchGroupButton.IsEnabled = running;
+        ApplyBlockListGroupButton.IsEnabled = running;
+        SendSelectedMessageButton.IsEnabled = running;
+        SendGroupMessageButton.IsEnabled = running;
+        SendAllMessageButton.IsEnabled = running;
+    }
+
+    private string ResolveGroupName(string studentId)
+    {
+        var groupId = _hub.GetStudentGroupId(studentId);
+        if (groupId == null)
+        {
+            return string.Empty;
+        }
+
+        var local = _groupItems.FirstOrDefault(g => g.Id == groupId);
+        if (local != null)
+        {
+            return local.Name;
+        }
+
+        var hubGroup = _hub.Groups.FirstOrDefault(g => g.Id == groupId);
+        return hubGroup?.Name ?? string.Empty;
+    }
+
+    private void RefreshStudentGroupNames()
+    {
+        foreach (var student in _students)
+        {
+            student.GroupName = ResolveGroupName(student.Id);
+        }
+    }
+
+    private void RefreshGroupsFromHub()
+    {
+        var selectedId = (GroupsListBox.SelectedItem as GroupItemViewModel)?.Id;
+        var hubGroups = _hub.IsRunning ? _hub.Groups.ToList() : new List<ClassGroup>();
+        var hubIds = new HashSet<string>(hubGroups.Select(g => g.Id), StringComparer.Ordinal);
+
+        for (var i = _groupItems.Count - 1; i >= 0; i--)
+        {
+            if (!hubIds.Contains(_groupItems[i].Id))
+            {
+                _groupItems.RemoveAt(i);
+            }
+        }
+
+        foreach (var g in hubGroups)
+        {
+            var existing = _groupItems.FirstOrDefault(x => x.Id == g.Id);
+            if (existing == null)
+            {
+                _groupItems.Add(new GroupItemViewModel { Id = g.Id, Name = g.Name });
+            }
+            else if (existing.Name != g.Name)
+            {
+                existing.Name = g.Name;
+            }
+        }
+
+        if (selectedId != null)
+        {
+            GroupsListBox.SelectedItem = _groupItems.FirstOrDefault(g => g.Id == selectedId);
+        }
+
+        RefreshStudentGroupNames();
+        UpdateGroupsEnabled();
+    }
+
+    private GroupItemViewModel? GetSelectedGroup()
+    {
+        return GroupsListBox.SelectedItem as GroupItemViewModel;
+    }
+
+    private async void NewGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Группы"))
+        {
+            return;
+        }
+
+        var name = await ShowGroupPromptAsync("Новая группа", "Создать");
+        if (name == null || string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var id = _hub.CreateGroup(name);
+        RefreshGroupsFromHub();
+        if (id != null)
+        {
+            GroupsListBox.SelectedItem = _groupItems.FirstOrDefault(g => g.Id == id);
+        }
+    }
+
+    private async void RenameGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Группы"))
+        {
+            return;
+        }
+
+        var group = GetSelectedGroup();
+        if (group == null)
+        {
+            MessageBox.Show(this, "Выберите группу", "Группы", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var name = await ShowGroupPromptAsync("Переименовать", "Сохранить", group.Name);
+        if (name == null || string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        _hub.RenameGroup(group.Id, name);
+        RefreshGroupsFromHub();
+    }
+
+    private void DisbandGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Группы"))
+        {
+            return;
+        }
+
+        var group = GetSelectedGroup();
+        if (group == null)
+        {
+            MessageBox.Show(this, "Выберите группу", "Группы", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        _hub.DisbandGroup(group.Id);
+        RefreshGroupsFromHub();
+    }
+
+    private void AssignGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Группы"))
+        {
+            return;
+        }
+
+        var selectedStudents = StudentsListBox.SelectedItems.OfType<StudentItemViewModel>().ToList();
+        if (selectedStudents.Count == 0)
+        {
+            MessageBox.Show(this, "Выберите ученика из списка слева", "Группы", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var groupId = GetSelectedGroup()?.Id;
+        foreach (var student in selectedStudents)
+        {
+            _hub.SetStudentGroup(student.Id, groupId);
+        }
+
+        RefreshStudentGroupNames();
+    }
+
     private async void CopyPinButton_Click(object sender, RoutedEventArgs e)
     {
-        var pin = PinTextBlock.Text;
-        if (string.IsNullOrWhiteSpace(pin))
-            return;
-
-        try
-        {
-            Clipboard.SetText(pin);
-        }
-        catch
-        {
-            return;
-        }
-
-        var tip = new ToolTip
-        {
-            Content = "PIN скопирован",
-            PlacementTarget = CopyPinButton,
-            Placement = PlacementMode.Bottom,
-            StaysOpen = false
-        };
-        CopyPinButton.ToolTip = tip;
-        tip.IsOpen = true;
-        await Task.Delay(1200);
-        tip.IsOpen = false;
-        CopyPinButton.ToolTip = "Копировать PIN в буфер обмена";
+        await CopyTextWithBriefTooltipAsync(
+            PinTextBlock.Text,
+            CopyPinButton,
+            "PIN скопирован",
+            "Копировать PIN в буфер обмена");
     }
 
     private async void CopyIpButton_Click(object sender, RoutedEventArgs e)
     {
         var ip = LanIpTextBlock.Text;
-        if (string.IsNullOrWhiteSpace(ip) || ip == "—" || ip == "нет LAN")
+        if (ip == "—" || ip == "нет LAN")
+        {
             return;
+        }
+
+        await CopyTextWithBriefTooltipAsync(ip, CopyIpButton, "IP скопирован", "Скопировать IP");
+    }
+
+    private async Task CopyTextWithBriefTooltipAsync(string text, Button button, string copiedMessage, string restoreTooltip)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
 
         try
         {
-            Clipboard.SetText(ip);
+            Clipboard.SetText(text);
         }
         catch
         {
@@ -276,16 +766,16 @@ public partial class MainWindow : Window
 
         var tip = new ToolTip
         {
-            Content = "IP скопирован",
-            PlacementTarget = CopyIpButton,
+            Content = copiedMessage,
+            PlacementTarget = button,
             Placement = PlacementMode.Bottom,
             StaysOpen = false
         };
-        CopyIpButton.ToolTip = tip;
+        button.ToolTip = tip;
         tip.IsOpen = true;
         await Task.Delay(1200);
         tip.IsOpen = false;
-        CopyIpButton.ToolTip = "Скопировать IP";
+        button.ToolTip = restoreTooltip;
     }
 
     private void RefreshLanIpDisplay()
@@ -313,6 +803,13 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && GroupPromptOverlay.Visibility == Visibility.Visible)
+        {
+            DismissGroupPrompt(null);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && EndClassConfirmOverlay.Visibility == Visibility.Visible)
         {
             DismissEndClassConfirm(false);
@@ -460,6 +957,10 @@ public partial class MainWindow : Window
             await _hub.StartClassAsync(className, pin);
             RefreshLanIpDisplay();
             UpdateUiState(isRunning: true);
+            if (_screenGridMode)
+            {
+                await ApplyScreenGridModeAsync(true);
+            }
         }
         catch (Exception ex)
         {
@@ -490,7 +991,11 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(() =>
             {
                 ExitStreamFullscreenIfNeeded();
+                _screenGridMode = false;
                 StudentsListBox.SelectedItem = null;
+                _previewBroadcastOn = false;
+                ClearAllPreviewBitmaps();
+                ScreenPreviewGridHost.Visibility = Visibility.Collapsed;
                 PlaceholderBorder.Visibility = Visibility.Visible;
                 StudentDetailGrid.Visibility = Visibility.Collapsed;
                 ScreenImage.Source = null;
@@ -498,6 +1003,9 @@ public partial class MainWindow : Window
                 _processes.Clear();
                 _selectedStudentHints.Clear();
                 ResetStreamMeta();
+                DismissGroupPrompt(null);
+                RefreshGroupsFromHub();
+                RefreshScreenModeToggleAppearance();
             });
             UpdateUiState(isRunning: false);
         }
@@ -546,11 +1054,26 @@ public partial class MainWindow : Window
 
     private async void StudentsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_suppressStudentListSelection)
+        {
+            return;
+        }
+
+        if (_screenGridMode)
+        {
+            return;
+        }
+
         var selected = StudentsListBox.SelectedItem as StudentItemViewModel;
+        var showDetailPanels = !_screenGridMode;
         if (selected == null || !_hub.IsRunning)
         {
-            PlaceholderBorder.Visibility = Visibility.Visible;
-            StudentDetailGrid.Visibility = Visibility.Collapsed;
+            if (showDetailPanels)
+            {
+                PlaceholderBorder.Visibility = Visibility.Visible;
+                StudentDetailGrid.Visibility = Visibility.Collapsed;
+            }
+
             ScreenImage.Source = null;
             FullscreenImage.Source = null;
             _processes.Clear();
@@ -562,8 +1085,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        PlaceholderBorder.Visibility = Visibility.Collapsed;
-        StudentDetailGrid.Visibility = Visibility.Visible;
+        if (showDetailPanels)
+        {
+            PlaceholderBorder.Visibility = Visibility.Collapsed;
+            StudentDetailGrid.Visibility = Visibility.Visible;
+        }
+
         SelectedStudentNameTextBlock.Text = selected.DisplayName;
         ScreenImage.Source = null;
         FullscreenImage.Source = null;
@@ -669,6 +1196,89 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnPreviewFrameReceived(string studentId, JpegFrame frame)
+    {
+        if (!_screenGridMode || !_hub.IsRunning || frame.Data == null || frame.Data.Length == 0)
+        {
+            return;
+        }
+
+        lock (_previewDecodeGate)
+        {
+            _pendingPreviewFrames[studentId] = frame;
+        }
+
+        if (Interlocked.CompareExchange(ref _previewDecodeBusy, 1, 0) == 0)
+        {
+            _ = Task.Run(DecodePendingPreviews);
+        }
+    }
+
+    private void DecodePendingPreviews()
+    {
+        while (true)
+        {
+            List<KeyValuePair<string, JpegFrame>> batch;
+            lock (_previewDecodeGate)
+            {
+                if (_pendingPreviewFrames.Count == 0)
+                {
+                    Interlocked.Exchange(ref _previewDecodeBusy, 0);
+                    if (_pendingPreviewFrames.Count > 0
+                        && Interlocked.CompareExchange(ref _previewDecodeBusy, 1, 0) == 0)
+                    {
+                        continue;
+                    }
+
+                    return;
+                }
+
+                batch = [.. _pendingPreviewFrames];
+                _pendingPreviewFrames.Clear();
+            }
+
+            foreach (var pair in batch)
+            {
+                var studentId = pair.Key;
+                var frame = pair.Value;
+                if (frame.Data == null || frame.Data.Length == 0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using var ms = new MemoryStream(frame.Data, writable: false);
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.StreamSource = ms;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        if (!_screenGridMode || !_hub.IsRunning)
+                        {
+                            return;
+                        }
+
+                        var vm = _students.FirstOrDefault(s => s.Id == studentId);
+                        if (vm == null || vm.Status != StudentHubStatus.Online)
+                        {
+                            return;
+                        }
+
+                        vm.PreviewImage = bitmap;
+                    });
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
     private void OnProcessListReceived(string studentId, WireMessage msg)
     {
         Dispatcher.InvokeAsync(() =>
@@ -754,6 +1364,7 @@ public partial class MainWindow : Window
         }
 
         RefreshStudentCount();
+        RefreshGroupsFromHub();
     }
 
     private string FormatClassRunningStatus()
@@ -768,6 +1379,7 @@ public partial class MainWindow : Window
         {
             UpsertStudentRow(student);
             await PushBlockListToStudentAsync(student.Id);
+            await SyncPreviewEnableIfGridAsync();
         });
     }
 
@@ -779,6 +1391,7 @@ public partial class MainWindow : Window
             if (student.Status == StudentHubStatus.Online)
             {
                 await PushBlockListToStudentAsync(student.Id);
+                await SyncPreviewEnableIfGridAsync();
             }
         });
     }
@@ -793,7 +1406,8 @@ public partial class MainWindow : Window
                 Id = student.Id,
                 DisplayName = student.DisplayName,
                 Hostname = student.Hostname,
-                Status = student.Status
+                Status = student.Status,
+                GroupName = ResolveGroupName(student.Id)
             });
         }
         else
@@ -801,6 +1415,7 @@ public partial class MainWindow : Window
             existing.DisplayName = student.DisplayName;
             existing.Hostname = student.Hostname;
             existing.Status = student.Status;
+            existing.GroupName = ResolveGroupName(student.Id);
         }
 
         if (_hub.IsRunning)
@@ -964,6 +1579,57 @@ public partial class MainWindow : Window
         return _conflictDialogTcs.Task;
     }
 
+    private Task<string?> ShowGroupPromptAsync(string title, string confirmButtonText, string? initial = null)
+    {
+        _groupPromptTcs?.TrySetResult(null);
+        _groupPromptTcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        GroupPromptTitle.Text = title;
+        GroupPromptConfirmButton.Content = confirmButtonText;
+        GroupPromptTextBox.Text = initial ?? string.Empty;
+        GroupPromptOverlay.Visibility = Visibility.Visible;
+        GroupPromptTextBox.Focus();
+        GroupPromptTextBox.SelectAll();
+
+        return _groupPromptTcs.Task;
+    }
+
+    private void DismissGroupPrompt(string? result)
+    {
+        if (GroupPromptOverlay.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        GroupPromptOverlay.Visibility = Visibility.Collapsed;
+        _groupPromptTcs?.TrySetResult(result);
+    }
+
+    private void GroupPromptConfirmButton_Click(object sender, RoutedEventArgs e)
+    {
+        var name = GroupPromptTextBox.Text;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        DismissGroupPrompt(name.Trim());
+    }
+
+    private void GroupPromptCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        DismissGroupPrompt(null);
+    }
+
+    private void GroupPromptTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            GroupPromptConfirmButton_Click(sender, e);
+        }
+    }
+
     private void ConflictConfirmButton_Click(object sender, RoutedEventArgs e)
     {
         ConflictDialogOverlay.Visibility = Visibility.Collapsed;
@@ -978,9 +1644,8 @@ public partial class MainWindow : Window
 
     private async Task LaunchSingleAppCoreAsync(string rawExe, string? launchTarget, string? name = null)
     {
-        if (!_hub.IsRunning)
+        if (!EnsureClassRunning("Быстрый запуск"))
         {
-            MessageBox.Show(this, "Сначала начните класс", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1010,7 +1675,7 @@ public partial class MainWindow : Window
             await BroadcastCurrentBlockListAsync();
         }
 
-        var sent = await LaunchAfterApplyingBlockListAsync(_hub.SelectedStudentId, exe, launchTarget);
+        var sent = await _hub.SendLaunchAppAfterBlockListAsync(_hub.SelectedStudentId, _blockedApps.ToList(), exe, launchTarget);
         StatusTextBlock.Text = sent
             ? $"Команда запуска «{name ?? exe}» отправлена выбранному ученику"
             : "Не удалось отправить команду запуска";
@@ -1029,9 +1694,8 @@ public partial class MainWindow : Window
 
     private async void LaunchAllButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_hub.IsRunning)
+        if (!EnsureClassRunning("Быстрый запуск"))
         {
-            MessageBox.Show(this, "Сначала начните класс", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1055,25 +1719,131 @@ public partial class MainWindow : Window
             SavePreset();
         }
 
-        var count = await BroadcastLaunchAfterApplyingBlockListAsync(exe, app.LaunchTarget);
+        var count = await _hub.BroadcastLaunchAppAfterBlockListAsync(_blockedApps.ToList(), exe, app.LaunchTarget);
         StatusTextBlock.Text = count > 0
             ? $"Команда запуска «{app.Name}» отправлена {count} ученикам"
             : "Не удалось отправить команду запуска";
     }
 
-    private async Task<bool> LaunchAfterApplyingBlockListAsync(string? studentId, string exe, string? launchTarget)
+    private async void LaunchGroupButton_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(studentId))
+        if (!EnsureClassRunning("Быстрый запуск"))
         {
-            return false;
+            return;
         }
 
-        return await _hub.SendLaunchAppAfterBlockListAsync(studentId, _blockedApps.ToList(), exe, launchTarget);
+        var group = GetSelectedGroup();
+        if (group == null)
+        {
+            MessageBox.Show(this, "Выберите группу", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (QuickAppsListBox.SelectedItem is not InstalledAppInfo app)
+        {
+            MessageBox.Show(this, "Выберите программу из списка быстрого запуска", "Быстрый запуск", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var exe = ProcessNameHelper.Normalize(app.Exe);
+        var existingBlocked = _blockedApps.FirstOrDefault(b => string.Equals(b, exe, StringComparison.OrdinalIgnoreCase));
+        if (existingBlocked != null)
+        {
+            var confirm = await ShowConflictDialogAsync("Программа заблокирована", $"«{exe}» в блоклисте.", "Всё равно открыть", isDestructive: false);
+            if (!confirm)
+            {
+                return;
+            }
+
+            _blockedApps.Remove(existingBlocked);
+            SavePreset();
+        }
+
+        var count = await _hub.SendLaunchAppAfterBlockListToGroupAsync(group.Id, _blockedApps.ToList(), exe, app.LaunchTarget);
+        StatusTextBlock.Text = count > 0
+            ? $"Команда запуска «{app.Name}» отправлена группе «{group.Name}» ({count})"
+            : "Не удалось отправить команду запуска";
     }
 
-    private async Task<int> BroadcastLaunchAfterApplyingBlockListAsync(string exe, string? launchTarget)
+    private string? GetTeacherMessageTextOrNull()
     {
-        return await _hub.BroadcastLaunchAppAfterBlockListAsync(_blockedApps.ToList(), exe, launchTarget);
+        var text = TeacherMessageTextBox.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return text;
+    }
+
+    private async void SendSelectedMessageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Сообщение классу"))
+        {
+            return;
+        }
+
+        var text = GetTeacherMessageTextOrNull();
+        if (text == null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_hub.SelectedStudentId))
+        {
+            MessageBox.Show(this, "Выберите ученика из списка слева", "Сообщение классу", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var sent = await _hub.SendTeacherMessageAsync(_hub.SelectedStudentId, text);
+        StatusTextBlock.Text = sent
+            ? "Сообщение отправлено выбранному ученику"
+            : "Не удалось отправить сообщение";
+    }
+
+    private async void SendGroupMessageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Сообщение классу"))
+        {
+            return;
+        }
+
+        var text = GetTeacherMessageTextOrNull();
+        if (text == null)
+        {
+            return;
+        }
+
+        var group = GetSelectedGroup();
+        if (group == null)
+        {
+            MessageBox.Show(this, "Выберите группу", "Сообщение классу", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var count = await _hub.SendTeacherMessageToGroupAsync(group.Id, text);
+        StatusTextBlock.Text = count > 0
+            ? $"Сообщение отправлено группе «{group.Name}» ({count})"
+            : "Не удалось отправить сообщение";
+    }
+
+    private async void SendAllMessageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Сообщение классу"))
+        {
+            return;
+        }
+
+        var text = GetTeacherMessageTextOrNull();
+        if (text == null)
+        {
+            return;
+        }
+
+        var count = await _hub.BroadcastTeacherMessageAsync(text);
+        StatusTextBlock.Text = count > 0
+            ? $"Сообщение отправлено {count} ученикам"
+            : "Не удалось отправить сообщение";
     }
 
     private async Task<int> BroadcastCurrentBlockListAsync()
@@ -1151,9 +1921,8 @@ public partial class MainWindow : Window
 
     private async void ApplyBlockListAll_Click(object sender, RoutedEventArgs e)
     {
-        if (!_hub.IsRunning)
+        if (!EnsureClassRunning("Блокировка приложений"))
         {
-            MessageBox.Show(this, "Сначала начните класс", "Блокировка приложений", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1163,9 +1932,8 @@ public partial class MainWindow : Window
 
     private async void ApplyBlockListSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (!_hub.IsRunning)
+        if (!EnsureClassRunning("Блокировка приложений"))
         {
-            MessageBox.Show(this, "Сначала начните класс", "Блокировка приложений", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1178,6 +1946,26 @@ public partial class MainWindow : Window
         var sent = await _hub.SendBlockListAsync(_hub.SelectedStudentId, _blockedApps.ToList());
         StatusTextBlock.Text = sent
             ? $"Блоклист ({_blockedApps.Count} программ) отправлен выбранному ученику"
+            : "Не удалось отправить блоклист";
+    }
+
+    private async void ApplyBlockListGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureClassRunning("Блокировка приложений"))
+        {
+            return;
+        }
+
+        var group = GetSelectedGroup();
+        if (group == null)
+        {
+            MessageBox.Show(this, "Выберите группу", "Блокировка приложений", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var count = await _hub.SendBlockListToGroupAsync(group.Id, _blockedApps.ToList());
+        StatusTextBlock.Text = count > 0
+            ? $"Блоклист ({_blockedApps.Count} программ) отправлен группе «{group.Name}» ({count})"
             : "Не удалось отправить блоклист";
     }
 
@@ -1262,6 +2050,42 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = $"{proc.Exe} · PID {proc.Pid} · {title}";
     }
 
+    private bool EnsureClassRunning(string caption)
+    {
+        if (_hub.IsRunning)
+        {
+            return true;
+        }
+
+        MessageBox.Show(this, "Сначала начните класс", caption, MessageBoxButton.OK, MessageBoxImage.Information);
+        return false;
+    }
+
+    private static void ApplyCachedUniformGridColumns(
+        ref UniformGrid? cached,
+        ref int lastColumns,
+        DependencyObject host,
+        int columns)
+    {
+        if (columns == lastColumns && cached != null)
+        {
+            return;
+        }
+
+        cached ??= FindVisualChild<UniformGrid>(host);
+        if (cached == null)
+        {
+            return;
+        }
+
+        if (cached.Columns != columns)
+        {
+            cached.Columns = columns;
+        }
+
+        lastColumns = columns;
+    }
+
     private static T? FindVisualAncestor<T>(DependencyObject? current) where T : DependencyObject
     {
         while (current != null)
@@ -1272,6 +2096,27 @@ public partial class MainWindow : Window
             }
 
             current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var nested = FindVisualChild<T>(child);
+            if (nested != null)
+            {
+                return nested;
+            }
         }
 
         return null;
@@ -1310,12 +2155,7 @@ public partial class MainWindow : Window
 
     private ProcessItemInfo? GetSelectedProcess()
     {
-        return ProcessesListView.SelectedItem switch
-        {
-            ProcessRowViewModel row => row.Item,
-            ProcessItemInfo item => item,
-            _ => null
-        };
+        return (ProcessesListView.SelectedItem as ProcessRowViewModel)?.Item;
     }
 
     private async Task BlockSelectedProcessCoreAsync()
@@ -1405,6 +2245,7 @@ public partial class MainWindow : Window
     protected override async void OnClosing(CancelEventArgs e)
     {
         SavePreset();
+        SaveUiSettings();
 
         if (_isClosingInProgress)
         {

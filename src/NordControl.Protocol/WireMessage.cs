@@ -34,6 +34,7 @@ public class WireMessage
     public int? ReconnectWindowMs { get; set; }
     public string? Reason { get; set; }
     public string? Message { get; set; }
+    public string? MessageId { get; set; }
     public int? Seq { get; set; }
     public string? ActiveExe { get; set; }
     public List<ProcessItemInfo>? Items { get; set; }

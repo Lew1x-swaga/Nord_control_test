@@ -1,6 +1,6 @@
 # Архитектура
 
-Статус: этапы 1–3 приняты (v0.1.2). Heartbeat переживает обрыв LAN и не зависит от интернета.
+Статус: этапы 1–3 приняты. Планы реализации 6–9 и 4–5 — `docs/AGENT_PLAN_STAGE*.md`.
 
 Стек зафиксирован: **C# / .NET 8 / WPF**. Не WinUI, не Electron.
 
@@ -21,10 +21,10 @@ NordControl.sln
 |---|---|
 | Protocol | На проводе. Без WPF и Win32 |
 | Core | `StudentSession`, `ClassHub`, `ClassClient`, `RamAppBlocker`, `AppLauncher`, пресет |
-| Teacher | UI списка, PIN, JPEG выбранного, процессы, запуск/блоклист |
-| Student | Плашка, трей, захват экрана, вотчер процессов, тосты/баннер |
+| Teacher | UI списка (лента/сетка — этап 6), PIN, JPEG выбранного, процессы, запуск/блоклист, группы (7), сообщение (8), превью экранов (9) |
+| Student | Плашка, трей, захват экрана, вотчер процессов, тосты/баннер, уведомление учителя (8) |
 
-Захват DXGI живёт в Student (Windows), в Protocol уходит JPEG как `messageType=2`. Политики только в Core/Student, в RAM. Позже: Windows Service для автозапуска — тот же Core (этап 5).
+Захват DXGI живёт в Student (Windows), в Protocol уходит JPEG как `messageType=2` (HD выбранного). Этап 9: редкий `messageType=3` для сетки превью. Политики только в Core/Student, в RAM. Служба автозапуска — тот же Core (этап 5, по плану).
 
 ## Топология
 

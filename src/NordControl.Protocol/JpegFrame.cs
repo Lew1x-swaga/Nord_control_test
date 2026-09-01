@@ -7,13 +7,18 @@ public readonly record struct JpegFrame(uint Width, uint Height, ulong Timestamp
 {
     public const int HeaderSize = 16;
 
+    public void WriteHeader(Span<byte> destination)
+    {
+        BinaryPrimitives.WriteUInt32BigEndian(destination[..4], Width);
+        BinaryPrimitives.WriteUInt32BigEndian(destination.Slice(4, 4), Height);
+        BinaryPrimitives.WriteUInt64BigEndian(destination.Slice(8, 8), TimestampMs);
+    }
+
     public byte[] Encode()
     {
         var dataLen = Data?.Length ?? 0;
         var buffer = new byte[HeaderSize + dataLen];
-        BinaryPrimitives.WriteUInt32BigEndian(buffer.AsSpan(0, 4), Width);
-        BinaryPrimitives.WriteUInt32BigEndian(buffer.AsSpan(4, 4), Height);
-        BinaryPrimitives.WriteUInt64BigEndian(buffer.AsSpan(8, 8), TimestampMs);
+        WriteHeader(buffer.AsSpan(0, HeaderSize));
         if (Data != null && dataLen > 0)
         {
             Data.CopyTo(buffer.AsSpan(HeaderSize));

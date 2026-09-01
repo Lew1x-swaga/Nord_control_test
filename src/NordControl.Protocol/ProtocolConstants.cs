@@ -13,8 +13,14 @@ public static class ProtocolConstants
     public const int MaxFramePayload = 4 * 1024 * 1024;
     public const byte JsonMessageType = 1;
     public const byte JpegMessageType = 2;
+    public const byte JpegPreviewMessageType = 3;
+    public const int PreviewLongSideMax = 320;
+    public const int PreviewIntervalMs = 2500;
+    public const int PreviewJpegQuality = 40;
+    public const int ProcessListIntervalMs = 2500;
     public const string UdpMagic = "NORD1";
     public const int PinLength = 6;
     public const int PinDigitCount = 3;
     public const int PinLetterCount = 3;
+    public const int MaxTeacherMessageChars = 400;
 }

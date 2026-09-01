@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using NordControl.Protocol;
 using Xunit;
 
@@ -85,5 +87,27 @@ public class JpegFrameCodecTests
         Assert.Equal(1080u, decoded.Value.Height);
         Assert.Equal(123456UL, decoded.Value.TimestampMs);
         Assert.Empty(decoded.Value.Data);
+    }
+
+    [Fact]
+    public async Task WriteJpeg_matches_encode_then_write_without_concat_copy()
+    {
+        var frame = new JpegFrame(1280, 720, 1723814400000UL, [0xFF, 0xD8, 0xFF, 0xD9]);
+
+        using var encoded = new MemoryStream();
+        await FrameCodec.WriteAsync(encoded, ProtocolConstants.JpegMessageType, frame.Encode(), CancellationToken.None);
+
+        using var direct = new MemoryStream();
+        await FrameCodec.WriteJpegMessageAsync(direct, frame, CancellationToken.None);
+
+        Assert.Equal(encoded.ToArray(), direct.ToArray());
+
+        using var previewEncoded = new MemoryStream();
+        await FrameCodec.WriteAsync(previewEncoded, ProtocolConstants.JpegPreviewMessageType, frame.Encode(), CancellationToken.None);
+
+        using var previewDirect = new MemoryStream();
+        await FrameCodec.WriteJpegPreviewMessageAsync(previewDirect, frame, CancellationToken.None);
+
+        Assert.Equal(previewEncoded.ToArray(), previewDirect.ToArray());
     }
 }

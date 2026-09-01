@@ -26,9 +26,11 @@ Heartbeat / discovery / кадры — только LAN. Не пинговать
 | TCP drop при lastRecv < 120 с | `Reconnecting`, запреты держать, exe живы |
 | Kill Teacher без `session_end` | Как обрыв: reconnect, затем fail-open по таймеру |
 
-## 4. Один видеопоток
+## 4. Один HD-видеопоток
 
-Стримит только выбранный ученик.
+Стримит HD (type 2, `stream_start`) только выбранный ученик.
+
+Этап 9: дополнительно редкие мелкие JPEG type 3 у онлайн-учеников, пока учитель включил сетку экранов. Это не второй HD и не запись на диск. Баннер надзора — только для type 2 / `stream_start`.
 
 ## 5. Надзор видимый
 
@@ -46,4 +48,4 @@ Heartbeat / discovery / кадры — только LAN. Не пинговать
 
 PIN только на вход в класс. Выход из UI после Join — подтверждение, не PIN. Служба автозапуска — этап 5, не сейчас. Скрытое удержание против админа, прятки из диспетчера, парные «сторожа» — нет.
 
-Этапы 1–3 приняты. Источник спецификации: [requirements.md](requirements.md), [protocol.md](protocol.md), [AGENTS.md](../AGENTS.md).
+Этапы 1–3 приняты. Этапы 6–9 — по `AGENT_PLAN_STAGE6.md` … `STAGE9.md`. Источник спецификации: [requirements.md](requirements.md), [protocol.md](protocol.md), [AGENTS.md](../AGENTS.md).

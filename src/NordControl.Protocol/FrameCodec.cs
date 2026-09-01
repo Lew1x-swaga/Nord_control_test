@@ -36,6 +36,41 @@ public static class FrameCodec
         return WriteAsync(stream, ProtocolConstants.JsonMessageType, payload, ct);
     }
 
+    public static Task WriteJpegMessageAsync(Stream stream, JpegFrame frame, CancellationToken ct = default)
+    {
+        return WriteJpegAsync(stream, ProtocolConstants.JpegMessageType, frame, ct);
+    }
+
+    public static Task WriteJpegPreviewMessageAsync(Stream stream, JpegFrame frame, CancellationToken ct = default)
+    {
+        return WriteJpegAsync(stream, ProtocolConstants.JpegPreviewMessageType, frame, ct);
+    }
+
+    private static async Task WriteJpegAsync(Stream stream, byte type, JpegFrame frame, CancellationToken ct)
+    {
+        var jpeg = frame.Data ?? [];
+        var payloadLen = JpegFrame.HeaderSize + jpeg.Length;
+        if (payloadLen > ProtocolConstants.MaxFramePayload)
+            throw new InvalidDataException("payload too large");
+
+        var tcpLen = 1 + payloadLen;
+        var prefix = new byte[5 + JpegFrame.HeaderSize];
+        prefix[0] = (byte)(tcpLen >> 24);
+        prefix[1] = (byte)(tcpLen >> 16);
+        prefix[2] = (byte)(tcpLen >> 8);
+        prefix[3] = (byte)tcpLen;
+        prefix[4] = type;
+        frame.WriteHeader(prefix.AsSpan(5, JpegFrame.HeaderSize));
+
+        await stream.WriteAsync(prefix, ct);
+        if (jpeg.Length > 0)
+        {
+            await stream.WriteAsync(jpeg, ct);
+        }
+
+        await stream.FlushAsync(ct);
+    }
+
     public static async Task<TcpFrame?> ReadAsync(Stream stream, CancellationToken ct)
     {
         var header = new byte[5];

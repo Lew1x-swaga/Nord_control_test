@@ -1,19 +1,26 @@
 # AGENTS
 
-Этапы 1–3 и ручной QA закрыты (продукт v0.1.2). Документы ниже — эталон спецификации, не очередь волн. Дальше — этап 4+ по `docs/roadmap.md`.
+Этапы 1–3 закрыты (v1.0.5). Дальше — **только** по `docs/roadmap.md` и `docs/AGENT_PLAN_STAGE*.md`. Оркестрация: `docs/subagents.md`.
 
 | Order | File | Purpose |
 |---|---|---|
-| 1 | `docs/roadmap.md` | Статусы этапов; 4 и 5 ещё впереди |
-| 2 | `docs/requirements.md` | FR-01…13, FR-20…23, FR-30…34 |
-| 3 | `docs/protocol.md` | Бинарные TCP кадры (JSON Type 1, JPEG Type 2) |
-| 4 | `docs/invariants.md` | LAN-only, fail-open, RAM-only |
-| 5 | `docs/ui.md` | Спецификация UI Учителя и Ученика |
-| 6 | `docs/architecture.md` | Компоненты, стейт-машина, потоки |
-| 7 | `docs/AGENT_PLAN.md` | Справка этапа 1 (LAN, PIN, heartbeat) |
-| 8 | `docs/AGENT_PLAN_STAGE2.md` | Справка этапа 2 (JPEG, список окон) |
-| 9 | `docs/AGENT_PLAN_STAGE3.md` | Справка этапа 3 (launch, RAM-блоклист, пресет) |
+| 1 | `docs/roadmap.md` | Статусы; урок 6–9; поставка 4–5 |
+| 2 | `docs/requirements.md` | FR-01…34 готово; FR-60…94 и FR-40…54 — спека |
+| 3 | `docs/protocol.md` | TCP кадры; `teacher_message`; JPEG type 3 |
+| 4 | `docs/invariants.md` | LAN, fail-open, RAM, один HD |
+| 5 | `docs/ui.md` | Учитель / ученик |
+| 6 | `docs/architecture.md` | Компоненты, стейт-машина |
+| 7 | `docs/AGENT_PLAN.md` | Справка этапа 1 (не волны) |
+| 8 | `docs/AGENT_PLAN_STAGE2.md` | Справка этапа 2 |
+| 9 | `docs/AGENT_PLAN_STAGE3.md` | Справка этапа 3 |
+| 10 | `docs/AGENT_PLAN_STAGE6.md` | **Волны этапа 6** (делать первым из урока) |
+| 11 | `docs/AGENT_PLAN_STAGE7.md` | Волны этапа 7 |
+| 12 | `docs/AGENT_PLAN_STAGE8.md` | Волны этапа 8 |
+| 13 | `docs/AGENT_PLAN_STAGE9.md` | Волны этапа 9 |
+| 14 | `docs/AGENT_PLAN_STAGE4.md` | Установщик — только по просьбе |
+| 15 | `docs/AGENT_PLAN_STAGE5.md` | Школа — только по просьбе |
+| 16 | `docs/subagents.md` | Кто кого диспатчит |
 
-Rules: `.cursor/rules/` (always: `00-agent-entry`, `invariants`).
+Rules: `.cursor/rules/` (`00-agent-entry`, `stage-plans`, `invariants`).
 
-Не диспатчить `nord-stage1/2/3-implementer` для повторной реализации закрытых этапов. Commit только если человек попросил.
+Не диспатчить `nord-stage1/2/3-implementer`. Один implementer. Commit только если человек попросил.

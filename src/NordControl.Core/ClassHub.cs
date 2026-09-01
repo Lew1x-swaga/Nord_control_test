@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -29,6 +28,8 @@ public record ConnectedStudent(
     StudentHubStatus Status
 );
 
+public record ClassGroup(string Id, string Name);
+
 public class ClassHub : IAsyncDisposable
 {
     private readonly int _udpPort;
@@ -45,6 +46,8 @@ public class ClassHub : IAsyncDisposable
     private readonly ConcurrentDictionary<string, ConnectedStudent> _studentsById = new();
     private readonly ConcurrentDictionary<string, string> _studentIdByToken = new();
     private readonly ConcurrentDictionary<string, StudentConnection> _activeConnections = new();
+    private readonly ConcurrentDictionary<string, ClassGroup> _groups = new();
+    private readonly ConcurrentDictionary<string, string> _studentGroupByStudentId = new();
 
     private Task? _udpLoopTask;
     private Task? _tcpAcceptLoopTask;
@@ -61,11 +64,121 @@ public class ClassHub : IAsyncDisposable
     public string? SelectedStudentId => _selectedStudentId;
 
     public IReadOnlyCollection<ConnectedStudent> Students => _studentsById.Values.ToList();
+    public IReadOnlyList<ClassGroup> Groups => _groups.Values.ToList();
+
+    public string? CreateGroup(string name)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var id = Guid.NewGuid().ToString();
+        _groups[id] = new ClassGroup(id, name.Trim());
+        return id;
+    }
+
+    public bool RenameGroup(string id, string name)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        if (!_groups.TryGetValue(id, out var existing))
+        {
+            return false;
+        }
+
+        _groups[id] = existing with { Name = name.Trim() };
+        return true;
+    }
+
+    public bool DisbandGroup(string id)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(id) || !_groups.TryRemove(id, out _))
+        {
+            return false;
+        }
+
+        foreach (var kv in _studentGroupByStudentId)
+        {
+            if (string.Equals(kv.Value, id, StringComparison.Ordinal))
+            {
+                _studentGroupByStudentId.TryRemove(kv.Key, out _);
+            }
+        }
+
+        return true;
+    }
+
+    public bool SetStudentGroup(string studentId, string? groupId)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(studentId))
+        {
+            return false;
+        }
+
+        if (groupId == null)
+        {
+            _studentGroupByStudentId.TryRemove(studentId, out _);
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(groupId) || !_groups.ContainsKey(groupId))
+        {
+            return false;
+        }
+
+        _studentGroupByStudentId[studentId] = groupId;
+        return true;
+    }
+
+    public string? GetStudentGroupId(string studentId)
+    {
+        if (string.IsNullOrWhiteSpace(studentId))
+        {
+            return null;
+        }
+
+        return _studentGroupByStudentId.TryGetValue(studentId, out var groupId) ? groupId : null;
+    }
+
+    public IReadOnlyList<string> GetOnlineStudentIdsInGroup(string groupId)
+    {
+        if (string.IsNullOrWhiteSpace(groupId) || !_groups.ContainsKey(groupId))
+        {
+            return [];
+        }
+
+        var ids = new List<string>();
+        foreach (var kv in _studentGroupByStudentId)
+        {
+            if (!string.Equals(kv.Value, groupId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (_studentsById.TryGetValue(kv.Key, out var student) && student.Status == StudentHubStatus.Online)
+            {
+                ids.Add(kv.Key);
+            }
+        }
+
+        return ids;
+    }
+
+    private void ClearGroups()
+    {
+        _groups.Clear();
+        _studentGroupByStudentId.Clear();
+    }
 
     public event Action<ConnectedStudent>? StudentJoined;
     public event Action<ConnectedStudent>? StudentStatusChanged;
     public event Action<ConnectedStudent>? StudentLeft;
     public event Action<string, JpegFrame>? ScreenFrameReceived;
+    public event Action<string, JpegFrame>? PreviewFrameReceived;
     public event Action<string, WireMessage>? ProcessListReceived;
     public event Action<string, IReadOnlyList<InstalledAppInfo>>? InstalledHintsReceived;
 
@@ -156,34 +269,16 @@ public class ClassHub : IAsyncDisposable
         }
     }
 
-    public async Task<bool> SendLaunchAppAsync(string studentId, string exe, string? launchTarget = null)
-    {
-        if (string.IsNullOrWhiteSpace(studentId) || !_activeConnections.TryGetValue(studentId, out var conn))
-        {
-            return false;
-        }
-
-        return await conn.TrySendMessageAsync(new WireMessage
+    public Task<bool> SendLaunchAppAsync(string studentId, string exe, string? launchTarget = null) =>
+        TrySendToStudentAsync(studentId, new WireMessage
         {
             Type = "launch_app",
             Exe = exe,
             LaunchTarget = launchTarget
         });
-    }
 
-    public async Task<int> BroadcastLaunchAppAsync(string exe, string? launchTarget = null)
-    {
-        var successCount = 0;
-        foreach (var id in GetOnlineStudentIds())
-        {
-            if (await SendLaunchAppAsync(id, exe, launchTarget))
-            {
-                successCount++;
-            }
-        }
-
-        return successCount;
-    }
+    public Task<int> BroadcastLaunchAppAsync(string exe, string? launchTarget = null) =>
+        SendToEachAsync(GetOnlineStudentIds(), id => SendLaunchAppAsync(id, exe, launchTarget));
 
     public async Task<bool> SendLaunchAppAfterBlockListAsync(
         string studentId,
@@ -199,43 +294,108 @@ public class ClassHub : IAsyncDisposable
         return await SendLaunchAppAsync(studentId, exe, launchTarget);
     }
 
-    public async Task<int> BroadcastLaunchAppAfterBlockListAsync(
+    public Task<int> BroadcastLaunchAppAfterBlockListAsync(
         IReadOnlyList<string> exeNames,
         string exe,
-        string? launchTarget = null)
-    {
-        var successCount = 0;
-        foreach (var id in GetOnlineStudentIds())
+        string? launchTarget = null) =>
+        SendToEachAsync(GetOnlineStudentIds(), id => SendLaunchAppAfterBlockListAsync(id, exeNames, exe, launchTarget));
+
+    public Task<bool> SendBlockListAsync(string studentId, IReadOnlyList<string> exeNames) =>
+        TrySendToStudentAsync(studentId, new WireMessage
         {
-            if (await SendLaunchAppAfterBlockListAsync(id, exeNames, exe, launchTarget))
-            {
-                successCount++;
-            }
+            Type = "set_block_list",
+            ExeNames = exeNames != null ? exeNames.ToList() : []
+        });
+
+    public Task<int> BroadcastBlockListAsync(IReadOnlyList<string> exeNames) =>
+        SendToEachAsync(GetOnlineStudentIds(), id => SendBlockListAsync(id, exeNames));
+
+    public Task<int> BroadcastPreviewEnableAsync() =>
+        SendToEachAsync(GetOnlineStudentIds(), id => SendPreviewControlAsync(id, "preview_enable"));
+
+    public Task<int> BroadcastPreviewDisableAsync() =>
+        SendToEachAsync(GetOnlineStudentIds(), id => SendPreviewControlAsync(id, "preview_disable"));
+
+    private Task<bool> SendPreviewControlAsync(string studentId, string type) =>
+        TrySendToStudentAsync(studentId, new WireMessage { Type = type });
+
+    public Task<int> SendLaunchAppToGroupAsync(string groupId, string exe, string? launchTarget = null) =>
+        SendToEachAsync(GetOnlineStudentIdsInGroup(groupId), id => SendLaunchAppAsync(id, exe, launchTarget));
+
+    public Task<int> SendBlockListToGroupAsync(string groupId, IReadOnlyList<string> exeNames) =>
+        SendToEachAsync(GetOnlineStudentIdsInGroup(groupId), id => SendBlockListAsync(id, exeNames));
+
+    public Task<int> SendLaunchAppAfterBlockListToGroupAsync(
+        string groupId,
+        IReadOnlyList<string> exeNames,
+        string exe,
+        string? launchTarget = null) =>
+        SendToEachAsync(
+            GetOnlineStudentIdsInGroup(groupId),
+            id => SendLaunchAppAfterBlockListAsync(id, exeNames, exe, launchTarget));
+
+    public async Task<bool> SendTeacherMessageAsync(string studentId, string text)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(studentId))
+        {
+            return false;
         }
 
-        return successCount;
+        var clipped = ClipTeacherMessage(text);
+        return await TrySendToStudentAsync(studentId, new WireMessage
+        {
+            Type = "teacher_message",
+            MessageId = Guid.NewGuid().ToString(),
+            Message = clipped
+        });
     }
 
-    public async Task<bool> SendBlockListAsync(string studentId, IReadOnlyList<string> exeNames)
+    public Task<int> BroadcastTeacherMessageAsync(string text)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(text))
+        {
+            return Task.FromResult(0);
+        }
+
+        return SendToEachAsync(GetOnlineStudentIds(), id => SendTeacherMessageAsync(id, text));
+    }
+
+    public Task<int> SendTeacherMessageToGroupAsync(string groupId, string text)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(text))
+        {
+            return Task.FromResult(0);
+        }
+
+        return SendToEachAsync(GetOnlineStudentIdsInGroup(groupId), id => SendTeacherMessageAsync(id, text));
+    }
+
+    private static string ClipTeacherMessage(string text)
+    {
+        if (text.Length <= ProtocolConstants.MaxTeacherMessageChars)
+        {
+            return text;
+        }
+
+        return text.Substring(0, ProtocolConstants.MaxTeacherMessageChars);
+    }
+
+    private async Task<bool> TrySendToStudentAsync(string studentId, WireMessage msg)
     {
         if (string.IsNullOrWhiteSpace(studentId) || !_activeConnections.TryGetValue(studentId, out var conn))
         {
             return false;
         }
 
-        return await conn.TrySendMessageAsync(new WireMessage
-        {
-            Type = "set_block_list",
-            ExeNames = exeNames != null ? exeNames.ToList() : []
-        });
+        return await conn.TrySendMessageAsync(msg);
     }
 
-    public async Task<int> BroadcastBlockListAsync(IReadOnlyList<string> exeNames)
+    private async Task<int> SendToEachAsync(IEnumerable<string> studentIds, Func<string, Task<bool>> send)
     {
         var successCount = 0;
-        foreach (var id in GetOnlineStudentIds())
+        foreach (var id in studentIds)
         {
-            if (await SendBlockListAsync(id, exeNames))
+            if (await send(id))
             {
                 successCount++;
             }
@@ -377,6 +537,7 @@ public class ClassHub : IAsyncDisposable
             }
         }
 
+        ClearGroups();
         _selectedStudentId = null;
 
         _cts.Dispose();
@@ -611,6 +772,14 @@ public class ClassHub : IAsyncDisposable
                         }
                     }
                 }
+                else if (frame.Value.Type == ProtocolConstants.JpegPreviewMessageType)
+                {
+                    var jpeg = JpegFrame.Decode(frame.Value.Payload);
+                    if (jpeg != null)
+                    {
+                        PreviewFrameReceived?.Invoke(studentId, jpeg.Value);
+                    }
+                }
                 else if (frame.Value.Type == ProtocolConstants.JsonMessageType)
                 {
                     var wireMsg = WireMessage.Deserialize(frame.Value.Payload);
@@ -715,6 +884,7 @@ public class ClassHub : IAsyncDisposable
                     {
                         var updated = student with { Status = StudentHubStatus.Disconnected };
                         _studentsById[student.Id] = updated;
+                        _studentGroupByStudentId.TryRemove(student.Id, out _);
                         StudentStatusChanged?.Invoke(updated);
                         StudentLeft?.Invoke(updated);
                     }

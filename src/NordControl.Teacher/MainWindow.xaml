@@ -16,6 +16,21 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         PreviewKeyDown="Window_PreviewKeyDown">
+    <Window.Resources>
+        <ItemsPanelTemplate x:Key="StudentListItemsPanel">
+            <VirtualizingStackPanel/>
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="StudentGridItemsPanel">
+            <UniformGrid VerticalAlignment="Top"/>
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="ScreenPreviewItemsPanel">
+            <UniformGrid VerticalAlignment="Top"/>
+        </ItemsPanelTemplate>
+        <Style x:Key="Style.StudentGridItem" TargetType="ListBoxItem" BasedOn="{StaticResource Style.StudentListItem}">
+            <Setter Property="Margin" Value="3"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -140,6 +155,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="2,0,2,10">
@@ -155,11 +171,32 @@
                                  TextChanged="StudentSearchTextBox_TextChanged"/>
                     </Grid>
 
-                    <Border Grid.Row="2" Height="1" Background="{StaticResource Brush.Border}" Margin="0,0,0,8"/>
+                    <Border Grid.Row="2"
+                            Background="{StaticResource Brush.SurfaceMuted}"
+                            BorderBrush="{StaticResource Brush.Border}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="3"
+                            Margin="0,0,0,8">
+                        <UniformGrid Columns="2">
+                            <Button x:Name="StudentListLayoutButton" Content="Лента"
+                                    Height="28" MinHeight="28" Margin="0,0,2,0"
+                                    Style="{StaticResource Style.AccentButton}"
+                                    Click="StudentListLayoutButton_Click"
+                                    ToolTip="Список учеников в одну колонку"/>
+                            <Button x:Name="StudentGridLayoutButton" Content="Сетка"
+                                    Height="28" MinHeight="28" Margin="2,0,0,0"
+                                    Style="{StaticResource Style.GhostButton}"
+                                    Click="StudentGridLayoutButton_Click"
+                                    ToolTip="Карточки учеников в несколько колонок"/>
+                        </UniformGrid>
+                    </Border>
 
                     <ListBox x:Name="StudentsListBox" Grid.Row="3"
                              ItemContainerStyle="{StaticResource Style.StudentListItem}"
-                             SelectionChanged="StudentsListBox_SelectionChanged">
+                             SelectionMode="Extended"
+                             SelectionChanged="StudentsListBox_SelectionChanged"
+                             SizeChanged="StudentsListBox_SizeChanged">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
@@ -190,6 +227,10 @@
                                                    Foreground="{StaticResource Brush.Text}" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="{StaticResource Brush.TextMuted}"
                                                    Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding GroupName}" FontSize="11" FontWeight="Medium"
+                                                   Foreground="{StaticResource Brush.Blue}"
+                                                   Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding HasGroup, Converter={StaticResource BoolToVis}}"/>
                                     </StackPanel>
                                     <Border Grid.Column="2" Background="{Binding StatusBackground}" CornerRadius="4"
                                             Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Center">
@@ -200,6 +241,43 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+
+                    <Border Grid.Row="4"
+                            Background="{StaticResource Brush.SurfaceMuted}"
+                            BorderBrush="{StaticResource Brush.Border}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="8"
+                            Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Группы" Style="{StaticResource Text.Subtitle}" Margin="0,0,0,6"/>
+                            <ListBox x:Name="GroupsListBox" Grid.Row="1"
+                                     MinHeight="52" MaxHeight="96" Margin="0,0,0,8"
+                                     DisplayMemberPath="Name"
+                                     ItemContainerStyle="{StaticResource Style.CardListItem}"/>
+                            <UniformGrid Grid.Row="2" Columns="2">
+                                <Button x:Name="NewGroupButton" Height="28" MinHeight="28" Margin="0,0,2,2"
+                                        Click="NewGroupButton_Click" Content="Новая группа"
+                                        ToolTip="Создать группу в этом классе"/>
+                                <Button x:Name="RenameGroupButton" Height="28" MinHeight="28" Margin="2,0,0,2"
+                                        Click="RenameGroupButton_Click" Content="Переименовать"
+                                        ToolTip="Переименовать выбранную группу"/>
+                                <Button x:Name="DisbandGroupButton" Height="28" MinHeight="28" Margin="0,2,2,0"
+                                        Style="{StaticResource Style.SoftDangerButton}"
+                                        Click="DisbandGroupButton_Click" Content="Распустить"
+                                        ToolTip="Распустить группу; ученики останутся без группы"/>
+                                <Button x:Name="AssignGroupButton" Height="28" MinHeight="28" Margin="2,2,0,0"
+                                        Style="{StaticResource Style.AccentButton}"
+                                        Click="AssignGroupButton_Click" Content="Назначить в группу"
+                                        ToolTip="Выбранных учеников — в выделенную группу. Если группа не выбрана — снять с группы."/>
+                            </UniformGrid>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -214,6 +292,31 @@
                         </StackPanel>
                     </TabItem.Header>
                     <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0"
+                                Background="{StaticResource Brush.SurfaceMuted}"
+                                BorderBrush="{StaticResource Brush.Border}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="3"
+                                Margin="0,0,0,8">
+                            <UniformGrid Columns="2">
+                                <Button x:Name="OneScreenModeButton" Content="Один экран"
+                                        Height="28" MinHeight="28" Margin="0,0,2,0"
+                                        Style="{StaticResource Style.AccentButton}"
+                                        Click="OneScreenModeButton_Click"
+                                        ToolTip="Большой экран выбранного ученика"/>
+                                <Button x:Name="ScreenGridModeButton" Content="Сетка экранов"
+                                        Height="28" MinHeight="28" Margin="2,0,0,0"
+                                        Style="{StaticResource Style.GhostButton}"
+                                        Click="ScreenGridModeButton_Click"
+                                        ToolTip="Превью экранов всех учеников"/>
+                            </UniformGrid>
+                        </Border>
+                        <Grid Grid.Row="1">
                         <Border x:Name="PlaceholderBorder" Style="{StaticResource Style.Card}" Visibility="Visible">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Viewbox Width="88" Height="64" Margin="0,0,0,16">
@@ -357,6 +460,67 @@
                                 </Grid>
                             </Border>
                         </Grid>
+                        <Border x:Name="ScreenPreviewGridHost" Style="{StaticResource Style.Card}"
+                                Visibility="Collapsed" Padding="8">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ItemsControl x:Name="ScreenPreviewItemsControl"
+                                              ItemsPanel="{StaticResource ScreenPreviewItemsPanel}"
+                                              SizeChanged="ScreenPreviewItemsControl_SizeChanged">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Click="PreviewTile_Click"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    VerticalContentAlignment="Stretch"
+                                                    Background="Transparent"
+                                                    BorderBrush="{StaticResource Brush.Border}"
+                                                    BorderThickness="1"
+                                                    Padding="8"
+                                                    Margin="4"
+                                                    Cursor="Hand"
+                                                    ToolTip="Показать экран ученика">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="*"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    <Border Background="{StaticResource Brush.Viewport}"
+                                                            MinHeight="96" CornerRadius="6" ClipToBounds="True">
+                                                        <Grid>
+                                                            <Image Source="{Binding PreviewImage}" Stretch="Uniform"
+                                                                   RenderOptions.BitmapScalingMode="LowQuality"
+                                                                   Visibility="{Binding HasPreviewImage, Converter={StaticResource BoolToVis}}"/>
+                                                            <TextBlock Text="{Binding PreviewPlaceholderText}"
+                                                                       FontSize="13"
+                                                                       Foreground="{StaticResource Brush.TextMuted}"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       Visibility="{Binding ShowPreviewPlaceholder, Converter={StaticResource BoolToVis}}"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <Grid Grid.Row="1" Margin="0,6,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"
+                                                                   Foreground="{StaticResource Brush.Text}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center"/>
+                                                        <Border Grid.Column="1" Background="{Binding StatusBackground}" CornerRadius="4"
+                                                                Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Medium"
+                                                                       Foreground="{Binding StatusForeground}"/>
+                                                        </Border>
+                                                    </Grid>
+                                                </Grid>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                        </Grid>
                     </Grid>
                 </TabItem>
 
@@ -369,9 +533,10 @@
                     </TabItem.Header>
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="3*" MinHeight="220"/>
+                            <RowDefinition Height="3*" MinHeight="200"/>
                             <RowDefinition Height="8"/>
-                            <RowDefinition Height="2*" MinHeight="140"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="2*" MinHeight="120"/>
                         </Grid.RowDefinitions>
 
                         <Grid Grid.Row="0">
@@ -443,11 +608,13 @@
                                             <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Close}"/>
                                         </Button>
                                     </Grid>
-                                    <UniformGrid Grid.Row="3" Columns="2">
+                                    <UniformGrid Grid.Row="3" Columns="3">
                                         <Button x:Name="LaunchSelectedButton" Style="{StaticResource Style.AccentButton}"
                                                 Height="32" Margin="0,0,4,0" Click="LaunchSelectedButton_Click" Content="Запустить у выбранного"/>
                                         <Button x:Name="LaunchAllButton" Style="{StaticResource Style.AccentButton}"
-                                                Height="32" Margin="4,0,0,0" Background="#0EA5E9" Click="LaunchAllButton_Click" Content="Запустить у всех"/>
+                                                Height="32" Margin="2,0" Background="#0EA5E9" Click="LaunchAllButton_Click" Content="Запустить у всех"/>
+                                        <Button x:Name="LaunchGroupButton" Style="{StaticResource Style.AccentButton}"
+                                                Height="32" Margin="4,0,0,0" Background="#0369A1" Click="LaunchGroupButton_Click" Content="Запустить у группы"/>
                                     </UniformGrid>
                                 </Grid>
                             </Border>
@@ -508,12 +675,16 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <Button Grid.Column="0" Height="32" MinHeight="32" Margin="0,0,4,0" Style="{StaticResource Style.DangerButton}"
                                                 Click="ApplyBlockListAll_Click" Content="Применить всем"/>
-                                        <Button Grid.Column="1" Height="32" MinHeight="32" Margin="4,0" Style="{StaticResource Style.AccentButton}"
+                                        <Button Grid.Column="1" Height="32" MinHeight="32" Margin="2,0" Style="{StaticResource Style.AccentButton}"
                                                 Background="#EA580C" Click="ApplyBlockListSelected_Click" Content="Выбранному"/>
-                                        <Button Grid.Column="2" Height="32" MinHeight="32" Margin="4,0,0,0" Click="ClearBlockListAll_Click" Content="Снять всё"/>
+                                        <Button x:Name="ApplyBlockListGroupButton" Grid.Column="2" Height="32" MinHeight="32" Margin="2,0"
+                                                Style="{StaticResource Style.AccentButton}" Background="#C2410C"
+                                                Click="ApplyBlockListGroup_Click" Content="Блоклист группе"/>
+                                        <Button Grid.Column="3" Height="32" MinHeight="32" Margin="4,0,0,0" Click="ClearBlockListAll_Click" Content="Снять всё"/>
                                     </Grid>
                                 </Grid>
                             </Border>
@@ -521,7 +692,36 @@
 
                         <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="Transparent"/>
 
-                        <Border Grid.Row="2" Style="{StaticResource Style.Card}" Padding="12">
+                        <Border Grid.Row="2" Style="{StaticResource Style.Card}" Padding="12" Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                    <TextBlock Text="Сообщение классу" Style="{StaticResource Text.Subtitle}"/>
+                                    <TextBlock Text="Одностороннее уведомление · ученик не отвечает"
+                                               Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <TextBox x:Name="TeacherMessageTextBox" Grid.Row="1" MinHeight="48" Margin="0,0,0,8"
+                                         TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                         Tag="Текст уведомления"/>
+                                <UniformGrid Grid.Row="2" Columns="3">
+                                    <Button x:Name="SendSelectedMessageButton" Style="{StaticResource Style.AccentButton}"
+                                            Height="32" Margin="0,0,4,0" Click="SendSelectedMessageButton_Click"
+                                            Content="Отправить выбранному"/>
+                                    <Button x:Name="SendGroupMessageButton" Style="{StaticResource Style.AccentButton}"
+                                            Height="32" Margin="2,0" Background="#0369A1" Click="SendGroupMessageButton_Click"
+                                            Content="Отправить группе"/>
+                                    <Button x:Name="SendAllMessageButton" Style="{StaticResource Style.AccentButton}"
+                                            Height="32" Margin="4,0,0,0" Background="#0EA5E9" Click="SendAllMessageButton_Click"
+                                            Content="Отправить всем"/>
+                                </UniformGrid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="3" Style="{StaticResource Style.Card}" Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -575,7 +775,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusTextBlock" Grid.Column="0" Text="класс остановлен"
                            FontSize="12" Foreground="{StaticResource Brush.TextSecondary}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Nord Control v1.0.5" FontSize="11"
+                <TextBlock Grid.Column="1" Text="Nord Control v1.0.6" FontSize="11"
                            Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center"/>
             </Grid>
         </Border>
@@ -625,6 +825,38 @@
                         <Button x:Name="ConflictConfirmButton" Grid.Column="2"
                                 Style="{StaticResource Style.AccentButton}" Height="34" MinHeight="34"
                                 Click="ConflictConfirmButton_Click" Content="Подтвердить"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+        <!-- Group name prompt -->
+        <Border x:Name="GroupPromptOverlay" Grid.Row="0" Grid.RowSpan="3"
+                Background="#800F172A" Visibility="Collapsed" Panel.ZIndex="31">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="400" Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
+                    CornerRadius="14" Padding="20">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="270" Opacity="0.25" Color="#0F172A"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="GroupPromptTitle" Text="Новая группа"
+                               Style="{StaticResource Text.Subtitle}" Margin="0,0,0,6"/>
+                    <TextBox x:Name="GroupPromptTextBox" Height="32" MinHeight="32" Margin="0,0,0,18"
+                             Tag="Имя группы"
+                             PreviewKeyDown="GroupPromptTextBox_PreviewKeyDown"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="GroupPromptCancelButton" Grid.Column="0"
+                                Style="{StaticResource Style.GhostButton}" Height="34" MinHeight="34"
+                                Click="GroupPromptCancelButton_Click" Content="Отмена"/>
+                        <Button x:Name="GroupPromptConfirmButton" Grid.Column="2"
+                                Style="{StaticResource Style.AccentButton}" Height="34" MinHeight="34"
+                                Click="GroupPromptConfirmButton_Click" Content="Создать"/>
                     </Grid>
                 </StackPanel>
             </Border>

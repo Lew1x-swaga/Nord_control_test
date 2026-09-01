@@ -21,7 +21,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _clientCts;
     private CancellationTokenSource? _discoveryHintCts;
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
-    private readonly IScreenCapturer _screenCapturer = new DxgiScreenCapturer();
+    private readonly IScreenCapturer _screenCapturer = new GdiScreenCapturer();
     private readonly ProcessMonitor _processMonitor = new();
     private readonly InstalledAppsScanner _appsScanner = new();
 
@@ -147,11 +147,17 @@ public partial class MainWindow : Window
         _client = new ClassClient(pin, manualTeacherIp: manualIp, displayName: $"{lastName} {firstName}")
         {
             CaptureFrameCallback = (ct) => _screenCapturer.CaptureFrameAsync(maxDimension: 1280, quality: 70, ct: ct),
+            CapturePreviewCallback = (ct) => _screenCapturer.CaptureFrameAsync(
+                maxDimension: ProtocolConstants.PreviewLongSideMax,
+                quality: ProtocolConstants.PreviewJpegQuality,
+                ct: ct),
             ProcessListCallback = () => _processMonitor.CollectProcessList(ProcessMonitor.MaxItems),
             InstalledAppsProvider = () => _processMonitor.CollectWindowedApps(_appsScanner.ScanInstalledApps())
         };
         _client.AppBlocker.ProcessKilled += OnProcessKilled;
         _client.StatusChanged += OnClientStatusChanged;
+        _client.TeacherMessageReceived += OnTeacherMessageReceived;
+        _client.TeacherMessageDismissed += OnTeacherMessageDismissed;
         _client.StreamStateChanged += OnStreamStateChanged;
         _client.Error += OnClientError;
 
@@ -210,6 +216,7 @@ public partial class MainWindow : Window
                 case SessionStatus.Idle:
                 default:
                     ScreenWatcherBannerWindow.CloseBanner();
+                    TeacherNoticeWindow.CloseNotice();
                     if (_hasJoinedClass)
                     {
                         ToastWindow.ShowToast("Урок окончен", "Ограничения сняты", isAlert: false, soundSubject: "lesson_ended");
@@ -237,6 +244,16 @@ public partial class MainWindow : Window
                     break;
             }
         });
+    }
+
+    private void OnTeacherMessageReceived(string id, string text)
+    {
+        Dispatcher.InvokeAsync(() => TeacherNoticeWindow.ShowNotice(id, text));
+    }
+
+    private void OnTeacherMessageDismissed()
+    {
+        Dispatcher.InvokeAsync(() => TeacherNoticeWindow.CloseNotice());
     }
 
     private void OnStreamStateChanged(bool isStreaming)
@@ -351,6 +368,7 @@ public partial class MainWindow : Window
     private void DisconnectFromClass()
     {
         ScreenWatcherBannerWindow.CloseBanner();
+        TeacherNoticeWindow.CloseNotice();
         _clientCts?.Cancel();
         _clientCts?.Dispose();
         _clientCts = null;
@@ -421,6 +439,7 @@ public partial class MainWindow : Window
     private void ShutdownAgent()
     {
         ScreenWatcherBannerWindow.CloseBanner();
+        TeacherNoticeWindow.CloseNotice();
         _notifyIcon?.Dispose();
         _discoveryHintCts?.Cancel();
         _discoveryHintCts?.Dispose();

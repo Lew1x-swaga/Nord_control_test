@@ -46,11 +46,14 @@ public class ClassClient : IAsyncDisposable, IDisposable
     public Func<IReadOnlyList<InstalledAppInfo>>? InstalledAppsProvider { get; set; }
 
     public Func<CancellationToken, Task<JpegFrame?>>? CaptureFrameCallback { get; set; }
+    public Func<CancellationToken, Task<JpegFrame?>>? CapturePreviewCallback { get; set; }
     public Func<WireMessage>? ProcessListCallback { get; set; }
 
     public event Action<StudentSession>? StatusChanged;
     public event Action<bool>? StreamStateChanged;
     public event Action<string>? Error;
+    public event Action<string, string>? TeacherMessageReceived;
+    public event Action? TeacherMessageDismissed;
 
     public ClassClient(
         string pin,
@@ -79,6 +82,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
             if (newStatus == SessionStatus.Ended || newStatus == SessionStatus.Idle)
             {
                 _appBlocker.Clear();
+                TeacherMessageDismissed?.Invoke();
             }
             StatusChanged?.Invoke(_session);
         };
@@ -439,7 +443,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
                 continue;
             }
 
-            if (reply.Type is "heartbeat" or "stream_start" or "stream_stop")
+            if (reply.Type is "heartbeat" or "stream_start" or "stream_stop" or "preview_enable" or "preview_disable")
             {
                 continue;
             }
@@ -553,6 +557,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
         var heartbeatTask = Task.Run(() => HeartbeatLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
         var tickTask = Task.Run(() => TickLoopAsync(sessionCts.Token), sessionCts.Token);
         var captureTask = Task.Run(() => ScreenCaptureLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
+        var previewTask = Task.Run(() => PreviewCaptureLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
         var processTask = Task.Run(() => ProcessListLoopAsync(stream, sendLock, sessionCts.Token), sessionCts.Token);
 
         try
@@ -590,6 +595,14 @@ public class ClassClient : IAsyncDisposable, IDisposable
                         {
                             _session.StreamEnabled = false;
                         }
+                        else if (wireMsg.Type == "preview_enable")
+                        {
+                            _session.PreviewEnabled = true;
+                        }
+                        else if (wireMsg.Type == "preview_disable")
+                        {
+                            _session.PreviewEnabled = false;
+                        }
                         else if (wireMsg.Type == "launch_app")
                         {
                             _appLauncher.Launch(wireMsg.Exe ?? string.Empty, wireMsg.LaunchTarget);
@@ -597,6 +610,13 @@ public class ClassClient : IAsyncDisposable, IDisposable
                         else if (wireMsg.Type == "set_block_list")
                         {
                             _appBlocker.SetBlockList(wireMsg.ExeNames ?? (IEnumerable<string>)[]);
+                        }
+                        else if (wireMsg.Type == "teacher_message")
+                        {
+                            if (!string.IsNullOrEmpty(wireMsg.MessageId) && wireMsg.Message != null)
+                            {
+                                TeacherMessageReceived?.Invoke(wireMsg.MessageId, wireMsg.Message);
+                            }
                         }
                     }
                 }
@@ -618,7 +638,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
             sessionCts.Cancel();
             try
             {
-                await Task.WhenAll(heartbeatTask, tickTask, captureTask, processTask);
+                await Task.WhenAll(heartbeatTask, tickTask, captureTask, previewTask, processTask);
             }
             catch { }
         }
@@ -687,11 +707,13 @@ public class ClassClient : IAsyncDisposable, IDisposable
                 var frame = await CaptureFrameCallback(ct);
                 if (frame.HasValue && _session.ShouldCapture)
                 {
-                    var framePayload = frame.Value.Encode();
                     await sendLock.WaitAsync(ct);
                     try
                     {
-                        await FrameCodec.WriteAsync(stream, ProtocolConstants.JpegMessageType, framePayload, ct);
+                        if (_session.ShouldCapture)
+                        {
+                            await FrameCodec.WriteJpegMessageAsync(stream, frame.Value, ct);
+                        }
                     }
                     finally
                     {
@@ -709,6 +731,48 @@ public class ClassClient : IAsyncDisposable, IDisposable
             catch
             {
                 // Ignore transient frame capture/send failures
+            }
+        }
+    }
+
+    private async Task PreviewCaptureLoopAsync(NetworkStream stream, SemaphoreSlim sendLock, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (!_session.ShouldPreview || _session.ShouldCapture || CapturePreviewCallback == null)
+                {
+                    await Task.Delay(100, ct);
+                    continue;
+                }
+
+                var frame = await CapturePreviewCallback(ct);
+                if (frame.HasValue && _session.ShouldPreview && !_session.ShouldCapture)
+                {
+                    await sendLock.WaitAsync(ct);
+                    try
+                    {
+                        if (_session.ShouldPreview && !_session.ShouldCapture)
+                        {
+                            await FrameCodec.WriteJpegPreviewMessageAsync(stream, frame.Value, ct);
+                        }
+                    }
+                    finally
+                    {
+                        sendLock.Release();
+                    }
+                }
+
+                await Task.Delay(ProtocolConstants.PreviewIntervalMs, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // Ignore transient preview capture/send failures
             }
         }
     }
@@ -731,7 +795,7 @@ public class ClassClient : IAsyncDisposable, IDisposable
                     await TrySendJsonMessageAsync(stream, sendLock, procMsg, ct, 500);
                 }
 
-                await Task.Delay(2500, ct);
+                await Task.Delay(ProtocolConstants.ProcessListIntervalMs, ct);
             }
             catch (OperationCanceledException)
             {

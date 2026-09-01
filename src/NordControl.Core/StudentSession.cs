@@ -15,6 +15,7 @@ public class StudentSession
 {
     private bool _streamEnabled;
     private bool _streamPaused;
+    private bool _previewEnabled;
     private bool _lastShouldCapture;
 
     public SessionStatus Status { get; private set; } = SessionStatus.Idle;
@@ -48,8 +49,15 @@ public class StudentSession
         }
     }
 
+    public bool PreviewEnabled
+    {
+        get => _previewEnabled;
+        set => _previewEnabled = value;
+    }
+
     public bool ShouldHoldPolicies => Status == SessionStatus.Online || Status == SessionStatus.Reconnecting;
     public bool ShouldCapture => Status == SessionStatus.Online && StreamEnabled && !StreamPaused;
+    public bool ShouldPreview => Status == SessionStatus.Online && PreviewEnabled && !StreamPaused;
 
     public event Action<SessionStatus, SessionStatus>? StatusChanged;
     public event Action<bool>? StreamStateChanged;
@@ -129,6 +137,7 @@ public class StudentSession
         SessionToken = null;
         _streamEnabled = false;
         _streamPaused = false;
+        _previewEnabled = false;
         SetStatus(SessionStatus.Idle);
         CheckAndNotifyStreamState();
     }

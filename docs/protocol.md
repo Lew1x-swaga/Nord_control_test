@@ -16,7 +16,9 @@ bytes  payload
 
 Тип 1: JSON-объект, поле `"type"` в snake_case, `"v": 1`.
 
-Тип 2: `uint32 width`, `uint32 height`, `uint64 ts_ms`, далее JPEG. Не JSON и не base64.
+Тип 2: `uint32 width`, `uint32 height`, `uint64 ts_ms`, далее JPEG. Не JSON и не base64. HD выбранного.
+
+Тип 3 (этап 9): тот же layout, что тип 2; только превью.
 
 ## Константы
 
@@ -31,6 +33,10 @@ bytes  payload
 | ReconnectWindow | 120000 мс |
 | UDP magic | `NORD1` |
 | PIN | 6 символов: 3 буквы A–Z и 3 цифры, вперемешку; на проводе строка, сравнение без регистра |
+| MaxTeacherMessageChars | 400 (этап 8) |
+| JpegPreviewMessageType | 3 (этап 9) |
+| PreviewLongSideMax | 320 |
+| PreviewIntervalMs | 2500 |
 
 ## UDP (ASCII, одна строка, `\n` не обязателен)
 
@@ -122,6 +128,33 @@ NORD1|announce|v=1|name=Класс|ip=192.168.1.5|tcp=47821
 
 Пустой массив — запретов нет.
 
+## JSON групп и сообщения (этапы 7–8)
+
+Группы **не ездят по проводу**: учитель держит карту `student_id → group_id` в RAM хаба и шлёт уже существующие `launch_app` / `set_block_list` нужным TCP.
+
+`teacher_message` учитель → ученик (этап 8):
+
+```json
+{"v":1,"type":"teacher_message","message_id":"uuid","message":"Откройте §3"}
+```
+
+`message` — одна строка, максимум `MaxTeacherMessageChars` (400). Длиннее — обрезать на хабе, не рвать сокет. Ученик **не** шлёт ответ. Неизвестный клиент игнорирует `type` (как сейчас).
+
+## Превью экранов (этап 9)
+
+JSON:
+
+```json
+{"v":1,"type":"preview_enable"}
+{"v":1,"type":"preview_disable"}
+```
+
+Учитель шлёт всем онлайн при включении сетки экранов. `preview_disable` при выходе из этой сетки. Не включает HD: HD по-прежнему только `stream_start` / `stream_stop`.
+
+Кадр TCP type **3** — тот же payload, что type 2 (`JpegFrame`: width, height, ts_ms, JPEG). Не JSON, не base64. Ориентир: длинная сторона ≤ `PreviewLongSideMax` (320), интервал ≥ `PreviewIntervalMs` (2500 мс), quality ~40.
+
+Type 2 = только выбранный HD. Type 3 = превью. Смешивать смысл нельзя.
+
 ## Запрещено в протоколе v1
 
-События мыши/клавиатуры, аудио, файлы, чат, лицензия, URL облака.
+События мыши/клавиатуры, аудио, файлы, чат/диалог учеников, лицензия, URL облака. `teacher_message` — одностороннее уведомление, не чат.
