@@ -12,6 +12,7 @@ public partial class AppSuggestBox : UserControl
 {
     private IReadOnlyList<InstalledAppInfo> _catalog = [];
     private bool _suppressFilter;
+    private bool _openBecauseClicked;
 
     private Window? _hostWindow;
 
@@ -99,8 +100,23 @@ public partial class AppSuggestBox : UserControl
         _suppressFilter = false;
     }
 
+    private void QueryTextBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _openBecauseClicked = true;
+        if (QueryTextBox.IsKeyboardFocusWithin)
+        {
+            RefreshSuggestions(open: true);
+        }
+    }
+
     private void QueryTextBox_GotFocus(object sender, RoutedEventArgs e)
     {
+        if (!_openBecauseClicked)
+        {
+            return;
+        }
+
+        _openBecauseClicked = false;
         RefreshSuggestions(open: true);
     }
 
@@ -112,7 +128,8 @@ public partial class AppSuggestBox : UserControl
         }
 
         SelectedApp = null;
-        RefreshSuggestions(open: true);
+        var typed = QueryTextBox.Text.Trim().Length > 0;
+        RefreshSuggestions(open: typed || SuggestPopup.IsOpen);
     }
 
     private void QueryTextBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -192,6 +209,7 @@ public partial class AppSuggestBox : UserControl
             }
 
             SuggestPopup.IsOpen = false;
+            _openBecauseClicked = false;
         });
     }
 

@@ -8,7 +8,7 @@ alwaysApply: false
 
 Namespace `NordControl.Protocol`. Нет `System.Windows`, `HWND`, UI.
 
-Кадр TCP: big-endian `uint32 length` (= 1+payload), `uint8 type`, payload. type 1 = UTF-8 JSON. Макс payload 4 MiB.
+Кадр TCP: big-endian `uint32 length` (= 1+payload), `uint8 type`, payload. type 1 = UTF-8 JSON. type 2 = HD JPEG. type 3 = превью JPEG (этап 9). Макс payload 4 MiB.
 
 JSON: `JsonNamingPolicy.SnakeCaseLower`, `WhenWritingNull`. Поле `type` snake_case.
 

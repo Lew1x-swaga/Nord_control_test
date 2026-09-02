@@ -21,15 +21,111 @@
             <VirtualizingStackPanel/>
         </ItemsPanelTemplate>
         <ItemsPanelTemplate x:Key="StudentGridItemsPanel">
-            <UniformGrid VerticalAlignment="Top"/>
+            <UniformGrid VerticalAlignment="Top" HorizontalAlignment="Stretch"/>
         </ItemsPanelTemplate>
         <ItemsPanelTemplate x:Key="ScreenPreviewItemsPanel">
-            <UniformGrid VerticalAlignment="Top"/>
+            <UniformGrid VerticalAlignment="Top" HorizontalAlignment="Stretch"/>
         </ItemsPanelTemplate>
         <Style x:Key="Style.StudentGridItem" TargetType="ListBoxItem" BasedOn="{StaticResource Style.StudentListItem}">
             <Setter Property="Margin" Value="3"/>
             <Setter Property="VerticalContentAlignment" Value="Stretch"/>
         </Style>
+        <DataTemplate x:Key="StudentListItemTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Grid Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Ellipse Width="14" Height="14" Opacity="0.22">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{Binding StatusForeground}"/>
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="Online">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <Ellipse Width="8" Height="8" Fill="{Binding StatusForeground}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+                <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{StaticResource Brush.Text}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="{StaticResource Brush.TextMuted}"
+                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding GroupName}" FontSize="11" FontWeight="Medium"
+                               Foreground="{StaticResource Brush.Blue}"
+                               Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding HasGroup, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+                <Border Grid.Column="2" Background="{Binding StatusBackground}" CornerRadius="4"
+                        Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Medium"
+                               Foreground="{Binding StatusForeground}"/>
+                </Border>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="StudentGridItemTemplate">
+            <Grid ToolTip="{Binding Hostname}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Ellipse Width="10" Height="10" Fill="{Binding GridStatusDot}"
+                         VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DisplayName}"
+                               FontWeight="SemiBold" FontSize="12"
+                               Foreground="{StaticResource Brush.Text}"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding GroupName}" FontSize="10"
+                               Foreground="{StaticResource Brush.Blue}"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding HasGroup, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="TeacherSentMessageTemplate">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Audience}" FontWeight="SemiBold" FontSize="12"
+                               Foreground="{StaticResource Brush.Text}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="1" Text="{Binding TimeText}"
+                               Style="{StaticResource Text.Caption}" Margin="10,0,0,0"/>
+                </Grid>
+                <TextBlock Grid.Row="1" Text="{Binding Body}" FontSize="13"
+                           Foreground="{StaticResource Brush.Text}"
+                           TextWrapping="Wrap" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="2" Text="{Binding StatusText}"
+                           FontSize="11" FontWeight="SemiBold" Margin="0,6,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource Brush.Rose}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Ok}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource Brush.Emerald}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </DataTemplate>
     </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -194,52 +290,21 @@
 
                     <ListBox x:Name="StudentsListBox" Grid.Row="3"
                              ItemContainerStyle="{StaticResource Style.StudentListItem}"
+                             ItemTemplate="{StaticResource StudentListItemTemplate}"
                              SelectionMode="Extended"
                              SelectionChanged="StudentsListBox_SelectionChanged"
-                             SizeChanged="StudentsListBox_SizeChanged">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
-                                        <Ellipse Width="14" Height="14" Opacity="0.22">
-                                            <Ellipse.Style>
-                                                <Style TargetType="Ellipse">
-                                                    <Setter Property="Fill" Value="{Binding StatusForeground}"/>
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Status}" Value="Online">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Ellipse.Style>
-                                        </Ellipse>
-                                        <Ellipse Width="8" Height="8" Fill="{Binding StatusForeground}"
-                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Grid>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="{StaticResource Brush.Text}" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding Hostname}" FontSize="11" Foreground="{StaticResource Brush.TextMuted}"
-                                                   Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding GroupName}" FontSize="11" FontWeight="Medium"
-                                                   Foreground="{StaticResource Brush.Blue}"
-                                                   Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
-                                                   Visibility="{Binding HasGroup, Converter={StaticResource BoolToVis}}"/>
-                                    </StackPanel>
-                                    <Border Grid.Column="2" Background="{Binding StatusBackground}" CornerRadius="4"
-                                            Padding="8,2" Margin="8,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding StatusText}" FontSize="11" FontWeight="Medium"
-                                                   Foreground="{Binding StatusForeground}"/>
-                                    </Border>
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
+                             SizeChanged="StudentsListBox_SizeChanged"
+                             PreviewMouseRightButtonDown="StudentsListBox_PreviewMouseRightButtonDown">
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Показать экран" Click="StudentMenuShowScreen_Click"/>
+                                <MenuItem Header="Назначить в группу" Click="StudentMenuAssignGroup_Click"/>
+                                <MenuItem Header="Убрать из группы" Click="StudentMenuRemoveFromGroup_Click"/>
+                                <MenuItem Header="Убрать из всех групп" Click="StudentMenuClearGroups_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Исключить с урока" Click="StudentMenuKick_Click"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                     </ListBox>
 
                     <Border Grid.Row="4"
@@ -259,23 +324,43 @@
                             <ListBox x:Name="GroupsListBox" Grid.Row="1"
                                      MinHeight="52" MaxHeight="96" Margin="0,0,0,8"
                                      DisplayMemberPath="Name"
-                                     ItemContainerStyle="{StaticResource Style.CardListItem}"/>
-                            <UniformGrid Grid.Row="2" Columns="2">
+                                     ItemContainerStyle="{StaticResource Style.CardListItem}"
+                                     SelectionChanged="GroupsListBox_SelectionChanged"/>
+                            <Grid Grid.Row="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
                                 <Button x:Name="NewGroupButton" Height="28" MinHeight="28" Margin="0,0,2,2"
                                         Click="NewGroupButton_Click" Content="Новая группа"
                                         ToolTip="Создать группу в этом классе"/>
-                                <Button x:Name="RenameGroupButton" Height="28" MinHeight="28" Margin="2,0,0,2"
+                                <Button x:Name="RenameGroupButton" Grid.Column="1" Height="28" MinHeight="28" Margin="2,0,0,2"
                                         Click="RenameGroupButton_Click" Content="Переименовать"
-                                        ToolTip="Переименовать выбранную группу"/>
-                                <Button x:Name="DisbandGroupButton" Height="28" MinHeight="28" Margin="0,2,2,0"
-                                        Style="{StaticResource Style.SoftDangerButton}"
-                                        Click="DisbandGroupButton_Click" Content="Распустить"
-                                        ToolTip="Распустить группу; ученики останутся без группы"/>
-                                <Button x:Name="AssignGroupButton" Height="28" MinHeight="28" Margin="2,2,0,0"
+                                        ToolTip="Переименовать группу"/>
+                                <Button x:Name="AssignGroupButton" Grid.Row="1" Grid.ColumnSpan="2"
+                                        Height="32" MinHeight="32" Margin="0,2,0,2"
+                                        Padding="8,0" FontSize="12"
                                         Style="{StaticResource Style.AccentButton}"
                                         Click="AssignGroupButton_Click" Content="Назначить в группу"
-                                        ToolTip="Выбранных учеников — в выделенную группу. Если группа не выбрана — снять с группы."/>
-                            </UniformGrid>
+                                        ToolTip="Добавить выбранных учеников в группу."/>
+                                <Button x:Name="RemoveFromGroupButton" Grid.Row="2" Grid.ColumnSpan="2"
+                                        Height="32" MinHeight="32" Margin="0,2,0,2"
+                                        Padding="8,0" FontSize="12"
+                                        Click="RemoveFromGroupButton_Click" Content="Убрать из группы"
+                                        ToolTip="Убрать выбранных учеников из группы. Другие группы сохраняются."/>
+                                <Button x:Name="DisbandGroupButton" Grid.Row="3" Grid.ColumnSpan="2"
+                                        Height="32" MinHeight="32" Margin="0,2,0,0"
+                                        Padding="8,0" FontSize="12"
+                                        Style="{StaticResource Style.SoftDangerButton}"
+                                        Click="DisbandGroupButton_Click" Content="Распустить группу"
+                                        ToolTip="Распустить группу; ученики останутся в других группах, если они есть."/>
+                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>
@@ -465,13 +550,23 @@
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
                                 <ItemsControl x:Name="ScreenPreviewItemsControl"
+                                              HorizontalContentAlignment="Stretch"
                                               ItemsPanel="{StaticResource ScreenPreviewItemsPanel}"
                                               SizeChanged="ScreenPreviewItemsControl_SizeChanged">
+                                    <ItemsControl.ItemContainerStyle>
+                                        <Style TargetType="ContentPresenter">
+                                            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                                            <Setter Property="VerticalAlignment" Value="Stretch"/>
+                                        </Style>
+                                    </ItemsControl.ItemContainerStyle>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Button Click="PreviewTile_Click"
                                                     HorizontalContentAlignment="Stretch"
                                                     VerticalContentAlignment="Stretch"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Stretch"
+                                                    MinHeight="152"
                                                     Background="Transparent"
                                                     BorderBrush="{StaticResource Brush.Border}"
                                                     BorderThickness="1"
@@ -485,7 +580,7 @@
                                                         <RowDefinition Height="Auto"/>
                                                     </Grid.RowDefinitions>
                                                     <Border Background="{StaticResource Brush.Viewport}"
-                                                            MinHeight="96" CornerRadius="6" ClipToBounds="True">
+                                                            MinHeight="110" CornerRadius="6" ClipToBounds="True">
                                                         <Grid>
                                                             <Image Source="{Binding PreviewImage}" Stretch="Uniform"
                                                                    RenderOptions.BitmapScalingMode="LowQuality"
@@ -533,10 +628,9 @@
                     </TabItem.Header>
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="3*" MinHeight="200"/>
+                            <RowDefinition Height="*" MinHeight="200"/>
                             <RowDefinition Height="8"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="2*" MinHeight="120"/>
+                            <RowDefinition Height="*" MinHeight="120"/>
                         </Grid.RowDefinitions>
 
                         <Grid Grid.Row="0">
@@ -692,36 +786,7 @@
 
                         <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="Transparent"/>
 
-                        <Border Grid.Row="2" Style="{StaticResource Style.Card}" Padding="12" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <StackPanel Grid.Row="0" Margin="0,0,0,8">
-                                    <TextBlock Text="Сообщение классу" Style="{StaticResource Text.Subtitle}"/>
-                                    <TextBlock Text="Одностороннее уведомление · ученик не отвечает"
-                                               Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
-                                </StackPanel>
-                                <TextBox x:Name="TeacherMessageTextBox" Grid.Row="1" MinHeight="48" Margin="0,0,0,8"
-                                         TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                                         Tag="Текст уведомления"/>
-                                <UniformGrid Grid.Row="2" Columns="3">
-                                    <Button x:Name="SendSelectedMessageButton" Style="{StaticResource Style.AccentButton}"
-                                            Height="32" Margin="0,0,4,0" Click="SendSelectedMessageButton_Click"
-                                            Content="Отправить выбранному"/>
-                                    <Button x:Name="SendGroupMessageButton" Style="{StaticResource Style.AccentButton}"
-                                            Height="32" Margin="2,0" Background="#0369A1" Click="SendGroupMessageButton_Click"
-                                            Content="Отправить группе"/>
-                                    <Button x:Name="SendAllMessageButton" Style="{StaticResource Style.AccentButton}"
-                                            Height="32" Margin="4,0,0,0" Background="#0EA5E9" Click="SendAllMessageButton_Click"
-                                            Content="Отправить всем"/>
-                                </UniformGrid>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Row="3" Style="{StaticResource Style.Card}" Padding="12">
+                        <Border Grid.Row="2" Style="{StaticResource Style.Card}" Padding="12">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -762,6 +827,78 @@
                         </Border>
                     </Grid>
                 </TabItem>
+
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Message}" Width="14" Height="14" Margin="0,0,6,0"/>
+                            <TextBlock Text="Сообщение" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="420"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource Style.Card}"
+                                VerticalAlignment="Stretch"
+                                Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="Сообщение классу" Style="{StaticResource Text.Subtitle}"/>
+                                <TextBlock Text="Одностороннее уведомление · ученик не отвечает"
+                                           Style="{StaticResource Text.Caption}" Margin="0,2,0,10"/>
+                                <TextBox x:Name="TeacherMessageTextBox" Height="120" MinHeight="120"
+                                         Margin="0,0,0,12"
+                                         TextWrapping="Wrap" AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         VerticalContentAlignment="Top" Padding="10,8"
+                                         Tag="Текст уведомления"/>
+                                <UniformGrid Columns="1" Margin="0,0,0,8">
+                                    <Button x:Name="SendSelectedMessageButton" Style="{StaticResource Style.AccentButton}"
+                                            Height="34" Margin="0,0,0,6" Click="SendSelectedMessageButton_Click"
+                                            Content="Отправить выбранному"/>
+                                    <Button x:Name="SendGroupMessageButton" Style="{StaticResource Style.AccentButton}"
+                                            Height="34" Margin="0,0,0,6" Background="#0369A1" Click="SendGroupMessageButton_Click"
+                                            Content="Отправить группе"/>
+                                    <Button x:Name="SendAllMessageButton" Style="{StaticResource Style.AccentButton}"
+                                            Height="34" Background="#0EA5E9" Click="SendAllMessageButton_Click"
+                                            Content="Отправить всем"/>
+                                </UniformGrid>
+                                <TextBlock x:Name="TeacherMessageFeedbackTextBlock"
+                                           Text="" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Brush.TextSecondary}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Column="2" Style="{StaticResource Style.Card}" Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Исходящие" Style="{StaticResource Text.Subtitle}"/>
+                                    <TextBlock Text="История этого урока · без ответов учеников"
+                                               Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <Grid Grid.Row="1">
+                                    <ListBox x:Name="TeacherMessageHistoryListBox"
+                                             Background="Transparent" BorderThickness="0"
+                                             HorizontalContentAlignment="Stretch"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ItemTemplate="{StaticResource TeacherSentMessageTemplate}"
+                                             ItemContainerStyle="{StaticResource Style.CardListItem}"/>
+                                    <TextBlock x:Name="TeacherMessageHistoryEmpty"
+                                               Text="Пока нет отправленных уведомлений"
+                                               Style="{StaticResource Text.Caption}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               TextAlignment="Center"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
             </TabControl>
         </Grid>
 
@@ -775,7 +912,7 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusTextBlock" Grid.Column="0" Text="класс остановлен"
                            FontSize="12" Foreground="{StaticResource Brush.TextSecondary}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1" Text="Nord Control v1.0.6" FontSize="11"
+                <TextBlock Grid.Column="1" Text="Nord Control v1.0.7" FontSize="11"
                            Foreground="{StaticResource Brush.TextMuted}" VerticalAlignment="Center"/>
             </Grid>
         </Border>
@@ -796,38 +933,6 @@
                     <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.FullscreenExit}" Fill="#E2E8F0"/>
                 </Button>
             </Grid>
-        </Border>
-        <!-- Conflict dialog overlay -->
-        <Border x:Name="ConflictDialogOverlay" Grid.Row="0" Grid.RowSpan="3"
-                Background="#800F172A" Visibility="Collapsed" Panel.ZIndex="30">
-            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Width="400" Background="{StaticResource Brush.Surface}"
-                    BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
-                    CornerRadius="14" Padding="20">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="270" Opacity="0.25" Color="#0F172A"/>
-                </Border.Effect>
-                <StackPanel>
-                    <TextBlock x:Name="ConflictDialogTitle" Text="Конфликт действия"
-                               Style="{StaticResource Text.Subtitle}" Margin="0,0,0,6"/>
-                    <TextBlock x:Name="ConflictDialogMessage" Text=""
-                               FontSize="13" Foreground="{StaticResource Brush.TextSecondary}"
-                               TextWrapping="Wrap" Margin="0,0,0,18"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Button x:Name="ConflictCancelButton" Grid.Column="0"
-                                Style="{StaticResource Style.GhostButton}" Height="34" MinHeight="34"
-                                Click="ConflictCancelButton_Click" Content="Отмена"/>
-                        <Button x:Name="ConflictConfirmButton" Grid.Column="2"
-                                Style="{StaticResource Style.AccentButton}" Height="34" MinHeight="34"
-                                Click="ConflictConfirmButton_Click" Content="Подтвердить"/>
-                    </Grid>
-                </StackPanel>
-            </Border>
         </Border>
         <!-- Group name prompt -->
         <Border x:Name="GroupPromptOverlay" Grid.Row="0" Grid.RowSpan="3"
@@ -861,16 +966,53 @@
                 </StackPanel>
             </Border>
         </Border>
-        <!-- End class confirmation (notification) -->
-        <Border x:Name="EndClassConfirmOverlay" Grid.Row="0" Grid.RowSpan="3"
+        <!-- Pick an existing group -->
+        <Border x:Name="GroupPickOverlay" Grid.Row="0" Grid.RowSpan="3"
+                Background="#800F172A" Visibility="Collapsed" Panel.ZIndex="31">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="400" Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
+                    CornerRadius="14" Padding="20">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="4" Direction="270" Opacity="0.25" Color="#0F172A"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="GroupPickTitle" Text="Выберите группу"
+                               Style="{StaticResource Text.Subtitle}"/>
+                    <TextBlock Text="Нажмите группу, чтобы выбрать"
+                               Style="{StaticResource Text.Caption}" Margin="0,2,0,12"/>
+                    <ListBox x:Name="GroupPickListBox" MaxHeight="220" Margin="0,0,0,18"
+                             DisplayMemberPath="Name"
+                             ItemContainerStyle="{StaticResource Style.CardListItem}"
+                             MouseDoubleClick="GroupPickListBox_MouseDoubleClick"
+                             PreviewMouseLeftButtonUp="GroupPickListBox_PreviewMouseLeftButtonUp"
+                             PreviewKeyDown="GroupPickListBox_PreviewKeyDown"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="GroupPickCancelButton" Grid.Column="0"
+                                Style="{StaticResource Style.GhostButton}" Height="34" MinHeight="34"
+                                Click="GroupPickCancelButton_Click" Content="Отмена"/>
+                        <Button x:Name="GroupPickConfirmButton" Grid.Column="2"
+                                Style="{StaticResource Style.AccentButton}" Height="34" MinHeight="34"
+                                Click="GroupPickConfirmButton_Click" Content="Выбрать"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Border>
+        <!-- In-app notice (replaces Windows MessageBox) -->
+        <Border x:Name="AppNoticeOverlay" Grid.Row="0" Grid.RowSpan="3"
                 Background="#590F172A" Visibility="Collapsed" Panel.ZIndex="32"
-                MouseLeftButtonDown="EndClassConfirmScrim_MouseLeftButtonDown">
+                MouseLeftButtonDown="AppNoticeScrim_MouseLeftButtonDown">
             <Border HorizontalAlignment="Right" VerticalAlignment="Top"
                     Width="380" Margin="0,76,20,0"
                     Background="{StaticResource Brush.Surface}"
                     BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
                     CornerRadius="16" Padding="18,16"
-                    MouseLeftButtonDown="EndClassConfirmCard_MouseLeftButtonDown">
+                    MouseLeftButtonDown="AppNoticeCard_MouseLeftButtonDown">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="28" ShadowDepth="6" Direction="270" Opacity="0.22" Color="#0F172A"/>
                 </Border.Effect>
@@ -885,34 +1027,35 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Border Width="40" Height="40" CornerRadius="12"
+                        <Border x:Name="AppNoticeIconChrome" Width="40" Height="40" CornerRadius="12"
                                 Background="{StaticResource Brush.RoseSoft}" Margin="0,0,12,0">
-                            <Path Style="{StaticResource Style.IconPath}" Data="{StaticResource Icon.Alert}"
+                            <Path x:Name="AppNoticeIcon" Style="{StaticResource Style.IconPath}"
+                                  Data="{StaticResource Icon.Alert}"
                                   Fill="{StaticResource Brush.Rose}" Width="20" Height="20"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="Завершить урок?" Style="{StaticResource Text.Subtitle}"/>
-                            <TextBlock Text="Действие нельзя отменить"
+                            <TextBlock x:Name="AppNoticeTitle" Text="Завершить урок?" Style="{StaticResource Text.Subtitle}"/>
+                            <TextBlock x:Name="AppNoticeCaption" Text="Действие нельзя отменить"
                                        Style="{StaticResource Text.Caption}" Margin="0,2,0,0"/>
                         </StackPanel>
                     </Grid>
-                    <TextBlock Grid.Row="1"
+                    <TextBlock x:Name="AppNoticeBody" Grid.Row="1"
                                Text="Класс остановится, ученики выйдут сразу. Ограничения на их компьютерах снимутся."
                                FontSize="13" Foreground="{StaticResource Brush.TextSecondary}"
                                TextWrapping="Wrap" LineHeight="20" Margin="0,0,0,16"/>
-                    <Grid Grid.Row="2">
+                    <Grid x:Name="AppNoticeButtonsGrid" Grid.Row="2">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="8"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Button x:Name="EndClassNoButton" Grid.Column="0"
+                        <Button x:Name="AppNoticeCancelButton" Grid.Column="0"
                                 Style="{StaticResource Style.GhostButton}" Height="36" MinHeight="36"
-                                Click="EndClassNoButton_Click" Content="Нет" IsCancel="True"/>
-                        <Button x:Name="EndClassYesButton" Grid.Column="2"
+                                Click="AppNoticeCancelButton_Click" Content="Нет" IsCancel="True"/>
+                        <Button x:Name="AppNoticeConfirmButton" Grid.Column="2"
                                 Style="{StaticResource Style.DangerButton}" Height="36" MinHeight="36"
-                                Click="EndClassYesButton_Click" Content="Да, завершить" IsDefault="True"/>
+                                Click="AppNoticeConfirmButton_Click" Content="Да, завершить" IsDefault="True"/>
                     </Grid>
                 </Grid>
             </Border>

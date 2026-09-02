@@ -47,7 +47,8 @@ public class ClassHub : IAsyncDisposable
     private readonly ConcurrentDictionary<string, string> _studentIdByToken = new();
     private readonly ConcurrentDictionary<string, StudentConnection> _activeConnections = new();
     private readonly ConcurrentDictionary<string, ClassGroup> _groups = new();
-    private readonly ConcurrentDictionary<string, string> _studentGroupByStudentId = new();
+    private readonly Dictionary<string, HashSet<string>> _groupIdsByStudentId = new(StringComparer.Ordinal);
+    private readonly object _membershipLock = new();
 
     private Task? _udpLoopTask;
     private Task? _tcpAcceptLoopTask;
@@ -101,15 +102,75 @@ public class ClassHub : IAsyncDisposable
             return false;
         }
 
-        foreach (var kv in _studentGroupByStudentId)
+        lock (_membershipLock)
         {
-            if (string.Equals(kv.Value, id, StringComparison.Ordinal))
+            var empty = new List<string>();
+            foreach (var kv in _groupIdsByStudentId)
             {
-                _studentGroupByStudentId.TryRemove(kv.Key, out _);
+                kv.Value.Remove(id);
+                if (kv.Value.Count == 0)
+                {
+                    empty.Add(kv.Key);
+                }
+            }
+
+            foreach (var studentId in empty)
+            {
+                _groupIdsByStudentId.Remove(studentId);
             }
         }
 
         return true;
+    }
+
+    public bool AddStudentToGroup(string studentId, string groupId)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(studentId) || string.IsNullOrWhiteSpace(groupId))
+        {
+            return false;
+        }
+
+        lock (_membershipLock)
+        {
+            if (!_groups.ContainsKey(groupId))
+            {
+                return false;
+            }
+
+            if (!_groupIdsByStudentId.TryGetValue(studentId, out var set))
+            {
+                set = new HashSet<string>(StringComparer.Ordinal);
+                _groupIdsByStudentId[studentId] = set;
+            }
+
+            set.Add(groupId);
+        }
+
+        return true;
+    }
+
+    public bool RemoveStudentFromGroup(string studentId, string groupId)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(studentId) || string.IsNullOrWhiteSpace(groupId))
+        {
+            return false;
+        }
+
+        lock (_membershipLock)
+        {
+            if (!_groupIdsByStudentId.TryGetValue(studentId, out var set))
+            {
+                return false;
+            }
+
+            var removed = set.Remove(groupId);
+            if (set.Count == 0)
+            {
+                _groupIdsByStudentId.Remove(studentId);
+            }
+
+            return removed;
+        }
     }
 
     public bool SetStudentGroup(string studentId, string? groupId)
@@ -121,27 +182,35 @@ public class ClassHub : IAsyncDisposable
 
         if (groupId == null)
         {
-            _studentGroupByStudentId.TryRemove(studentId, out _);
+            RemoveAllGroupsForStudent(studentId);
             return true;
         }
 
-        if (string.IsNullOrWhiteSpace(groupId) || !_groups.ContainsKey(groupId))
-        {
-            return false;
-        }
-
-        _studentGroupByStudentId[studentId] = groupId;
-        return true;
+        return AddStudentToGroup(studentId, groupId);
     }
 
     public string? GetStudentGroupId(string studentId)
     {
+        var ids = GetStudentGroupIds(studentId);
+        return ids.Count == 0 ? null : ids[0];
+    }
+
+    public IReadOnlyList<string> GetStudentGroupIds(string studentId)
+    {
         if (string.IsNullOrWhiteSpace(studentId))
         {
-            return null;
+            return [];
         }
 
-        return _studentGroupByStudentId.TryGetValue(studentId, out var groupId) ? groupId : null;
+        lock (_membershipLock)
+        {
+            if (_groupIdsByStudentId.TryGetValue(studentId, out var set) && set.Count > 0)
+            {
+                return set.ToList();
+            }
+        }
+
+        return [];
     }
 
     public IReadOnlyList<string> GetOnlineStudentIdsInGroup(string groupId)
@@ -151,27 +220,42 @@ public class ClassHub : IAsyncDisposable
             return [];
         }
 
-        var ids = new List<string>();
-        foreach (var kv in _studentGroupByStudentId)
+        List<string> candidates;
+        lock (_membershipLock)
         {
-            if (!string.Equals(kv.Value, groupId, StringComparison.Ordinal))
-            {
-                continue;
-            }
+            candidates = _groupIdsByStudentId
+                .Where(kv => kv.Value.Contains(groupId))
+                .Select(kv => kv.Key)
+                .ToList();
+        }
 
-            if (_studentsById.TryGetValue(kv.Key, out var student) && student.Status == StudentHubStatus.Online)
+        var ids = new List<string>();
+        foreach (var studentId in candidates)
+        {
+            if (_studentsById.TryGetValue(studentId, out var student) && student.Status == StudentHubStatus.Online)
             {
-                ids.Add(kv.Key);
+                ids.Add(studentId);
             }
         }
 
         return ids;
     }
 
+    private void RemoveAllGroupsForStudent(string studentId)
+    {
+        lock (_membershipLock)
+        {
+            _groupIdsByStudentId.Remove(studentId);
+        }
+    }
+
     private void ClearGroups()
     {
         _groups.Clear();
-        _studentGroupByStudentId.Clear();
+        lock (_membershipLock)
+        {
+            _groupIdsByStudentId.Clear();
+        }
     }
 
     public event Action<ConnectedStudent>? StudentJoined;
@@ -454,6 +538,62 @@ public class ClassHub : IAsyncDisposable
 
     public Task StartClassAsync(string className, string pin, CancellationToken ct = default) =>
         StartClass(className, pin, ct);
+
+    public async Task<bool> KickStudentAsync(string studentId)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(studentId) || !_studentsById.ContainsKey(studentId))
+        {
+            return false;
+        }
+
+        if (string.Equals(_selectedStudentId, studentId, StringComparison.Ordinal)
+            || string.Equals(_desiredStudentId, studentId, StringComparison.Ordinal))
+        {
+            await SelectStudentAsync(null);
+        }
+
+        if (_activeConnections.TryGetValue(studentId, out var conn))
+        {
+            await conn.TrySendMessageAsync(new WireMessage
+            {
+                Type = "set_block_list",
+                ExeNames = []
+            });
+            await conn.TrySendMessageAsync(new WireMessage
+            {
+                Type = "session_end",
+                Reason = "kicked"
+            });
+
+            try
+            {
+                if (conn.Client.Connected)
+                {
+                    conn.Client.Client?.Shutdown(SocketShutdown.Send);
+                }
+            }
+            catch
+            {
+            }
+
+            await Task.Delay(50);
+            CloseClient(conn.Client);
+            _activeConnections.TryRemove(studentId, out _);
+        }
+
+        RemoveAllGroupsForStudent(studentId);
+
+        if (_studentsById.TryGetValue(studentId, out var student)
+            && student.Status != StudentHubStatus.Disconnected)
+        {
+            var updated = student with { Status = StudentHubStatus.Disconnected };
+            _studentsById[studentId] = updated;
+            StudentStatusChanged?.Invoke(updated);
+            StudentLeft?.Invoke(updated);
+        }
+
+        return true;
+    }
 
     public async Task StopClassAsync()
     {
@@ -884,7 +1024,7 @@ public class ClassHub : IAsyncDisposable
                     {
                         var updated = student with { Status = StudentHubStatus.Disconnected };
                         _studentsById[student.Id] = updated;
-                        _studentGroupByStudentId.TryRemove(student.Id, out _);
+                        RemoveAllGroupsForStudent(student.Id);
                         StudentStatusChanged?.Invoke(updated);
                         StudentLeft?.Invoke(updated);
                     }

@@ -125,5 +125,7 @@ public class TeacherUiSettingsTests
     public void ColumnCount_DefaultMinCardWidth_Is168()
     {
         Assert.Equal(2, StudentGridLayout.ColumnCount(500));
+        Assert.Equal(168, StudentGridLayout.DefaultMinCardWidth);
+        Assert.Equal(2, StudentGridLayout.ColumnCount(276, StudentGridLayout.StudentListMinCardWidth));
     }
 }

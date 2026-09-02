@@ -77,7 +77,11 @@ public static class TeacherUiSettingsManager
 
 public static class StudentGridLayout
 {
-    public static int ColumnCount(double panelWidth, int minCardWidth = 168)
+    public const int DefaultMinCardWidth = 168;
+    public const int StudentListMinCardWidth = 132;
+    public const int ScreenPreviewMinCardWidth = 180;
+
+    public static int ColumnCount(double panelWidth, int minCardWidth = DefaultMinCardWidth)
     {
         if (panelWidth <= 0 || minCardWidth <= 0)
         {

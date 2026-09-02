@@ -54,6 +54,7 @@
     <StreamGeometry x:Key="Icon.Minus">M19,13H5V11H19V13Z</StreamGeometry>
     <StreamGeometry x:Key="Icon.Apps">M4,8H8V4H4V8ZM10,20H14V16H10V20ZM4,20H8V16H4V20ZM4,14H8V10H4V14ZM10,14H14V10H10V14ZM16,4V8H20V4H16ZM10,8H14V4H10V8ZM16,14H20V10H16V14ZM16,20H20V16H16V20Z</StreamGeometry>
     <StreamGeometry x:Key="Icon.Alert">M13,14H11V10H13M13,18H11V16H13M1,21H23L12,2L1,21Z</StreamGeometry>
+    <StreamGeometry x:Key="Icon.Message">M20,2H4A2,2 0 0,0 2,4V22L6,18H20A2,2 0 0,0 22,16V4A2,2 0 0,0 20,2M20,16H5.17L4,17.17V4H20V16Z</StreamGeometry>
 
     <Style x:Key="Style.IconPath" TargetType="Path">
         <Setter Property="Stretch" Value="Uniform"/>

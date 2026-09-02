@@ -1,16 +1,18 @@
 ---
-description: Точка входа агента Nord Control — что читать, выбор этапа, n субагентов
+description: Точка входа Nord Control — этап, план, субагенты
 alwaysApply: true
 ---
 
 # Вход
 
-Код: этап 1 (завершен), этап 2 (специфицирован) или этап 3 (специфицирован).
-Источники планов: `docs/AGENT_PLAN.md` (этап 1), `docs/AGENT_PLAN_STAGE2.md` (этап 2), `docs/AGENT_PLAN_STAGE3.md` (этап 3).
-Оркестрация: `docs/subagents.md`.
+Этапы 1–3 закрыты. Не диспатчить `nord-stage1/2/3-*`.
 
-**READ (порядок для Этапа 3):** `AGENTS.md` → `docs/AGENT_PLAN_STAGE3.md` → `docs/requirements.md` (FR-30…34) → `docs/protocol.md` → `docs/invariants.md`.
+**Урок (порядок):** 6 → 7 → 8 → 9.
+Планы: `docs/AGENT_PLAN_STAGE6.md` … `STAGE9.md`.
+Оркестрация: `docs/subagents.md`. Следовать плану этапа — `.cursor/rules/stage-plans.mdc`.
 
-**n субагентов:** 1 implementer одновременно (`nord-stage3-implementer`). 4 волны. После волны — `nord-stage3-reviewer`. В конце — `nord-stage3-final-reviewer`. Файлы: `.cursor/agents/`.
+**READ текущего этапа:** `AGENTS.md` → `docs/AGENT_PLAN_STAGE{N}.md` → `docs/requirements.md` (FR этого этапа) → `docs/protocol.md` / `docs/ui.md` → `docs/invariants.md`.
 
-**STOP:** MSI installer, Windows Service, автозапуск без сессии, облачная телеметрия, этап 4. Commit только если пользователь попросил. Перед коммитом — `.cursor/rules/pre-commit-review.mdc`. «Обнови экзешники» / залить Teacher+Student на GitHub — `.cursor/rules/github-exes.mdc`.
+**n субагентов:** 1 implementer (`nord-stageN-implementer`). После волны — `nord-stageN-reviewer`. В конце — `nord-stageN-final-reviewer`. Файлы: `.cursor/agents/`.
+
+**STOP:** этап N+1 до READY финала N; этапы 4–5 без просьбы про Setup/службу; MSI/служба «заодно» с уроком; облако. Commit только по просьбе. Pre-commit: `.cursor/rules/pre-commit-review.mdc`. Exe на GitHub: `.cursor/rules/github-exes.mdc`.

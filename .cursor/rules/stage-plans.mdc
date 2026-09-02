@@ -1,0 +1,23 @@
+---
+description: Реализация только по AGENT_PLAN_STAGE; волны и субагенты
+alwaysApply: true
+---
+
+# Планы этапов
+
+Код контура урока и поставки писать **только** по:
+
+- `docs/AGENT_PLAN_STAGE6.md` … `STAGE9.md` (урок)
+- `docs/AGENT_PLAN_STAGE4.md`, `STAGE5.md` (поставка, если человек просил)
+
+Не выдумывать фичи вне DO волны. Не закрывать следующий этап «заодно».
+
+```text
+# BAD: сетка экранов + группы в одном PR
+# GOOD: одна волна из текущего AGENT_PLAN, DONE_WHEN exit 0
+```
+
+Controller: skill `executing-nord-stageN`, таблица в `docs/subagents.md`.
+Implementer один. Reviewer после волны. Fail → тот же implementer-fixer. Потом final-reviewer.
+
+Закрытые `docs/AGENT_PLAN.md` / `STAGE2` / `STAGE3` — справки, не очередь волн.

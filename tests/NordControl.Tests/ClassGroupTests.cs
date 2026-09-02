@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using NordControl.Core;
 using Xunit;
@@ -105,14 +106,31 @@ public class ClassGroupTests
     }
 
     [Fact]
-    public async Task SetStudentGroup_LastAssignedGroupWins()
+    public async Task SetStudentGroup_CanBelongToTwoGroups()
     {
         await using var hub = await StartHubAsync();
         var a = hub.CreateGroup("А");
         var b = hub.CreateGroup("Б");
         Assert.True(hub.SetStudentGroup("student-1", a));
         Assert.True(hub.SetStudentGroup("student-1", b));
-        Assert.Equal(b, hub.GetStudentGroupId("student-1"));
+        var ids = hub.GetStudentGroupIds("student-1");
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(a, ids);
+        Assert.Contains(b, ids);
+    }
+
+    [Fact]
+    public async Task RemoveStudentFromGroup_KeepsOtherGroup()
+    {
+        await using var hub = await StartHubAsync();
+        var a = hub.CreateGroup("А");
+        var b = hub.CreateGroup("Б");
+        Assert.True(hub.AddStudentToGroup("student-1", a!));
+        Assert.True(hub.AddStudentToGroup("student-1", b!));
+        Assert.True(hub.RemoveStudentFromGroup("student-1", a!));
+        var ids = hub.GetStudentGroupIds("student-1");
+        Assert.Single(ids);
+        Assert.Equal(b, ids[0]);
     }
 
     [Fact]
@@ -127,6 +145,20 @@ public class ClassGroupTests
         Assert.Empty(hub.Groups);
         Assert.Null(hub.GetStudentGroupId("student-1"));
         Assert.Null(hub.GetStudentGroupId("student-2"));
+    }
+
+    [Fact]
+    public async Task DisbandGroup_KeepsMembershipInOtherGroups()
+    {
+        await using var hub = await StartHubAsync();
+        var a = hub.CreateGroup("А");
+        var b = hub.CreateGroup("Б");
+        Assert.True(hub.AddStudentToGroup("student-1", a!));
+        Assert.True(hub.AddStudentToGroup("student-1", b!));
+        Assert.True(hub.DisbandGroup(a!));
+        var ids = hub.GetStudentGroupIds("student-1");
+        Assert.Single(ids);
+        Assert.Equal(b, ids[0]);
     }
 
     [Fact]
@@ -216,5 +248,55 @@ public class ClassGroupTests
         }
 
         Assert.Empty(hub.Groups);
+    }
+
+    [Fact]
+    public async Task KickStudent_WhenClassNotRunningOrUnknown_ReturnsFalse()
+    {
+        var (udp, tcp) = TestPorts.NextPair();
+        var idle = new ClassHub(udp, tcp);
+        Assert.False(await idle.KickStudentAsync("student-1"));
+
+        await using var hub = await StartHubAsync();
+        Assert.False(await hub.KickStudentAsync("missing"));
+        Assert.False(await hub.KickStudentAsync(""));
+    }
+
+    [Fact]
+    public async Task KickStudent_AfterJoin_SendsSessionEndAndDisconnects()
+    {
+        var (udpPort, tcpPort) = TestPorts.NextPair();
+        await using var hub = new ClassHub(udpPort, tcpPort);
+        await hub.StartClassAsync("Kick-class", "1234");
+
+        var client = new ClassClient(
+            pin: "1234",
+            udpPort: udpPort,
+            tcpPort: tcpPort,
+            manualTeacherIp: "127.0.0.1",
+            displayName: "Ученик-Kick");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var runTask = Task.Run(() => client.RunAsync(cts.Token));
+        try
+        {
+            await WaitUntil.True(() => client.Session.Status == SessionStatus.Online, attempts: 80);
+            Assert.Equal(SessionStatus.Online, client.Session.Status);
+            var studentId = client.Session.StudentId!;
+            var groupId = hub.CreateGroup("А");
+            Assert.True(hub.AddStudentToGroup(studentId, groupId!));
+
+            Assert.True(await hub.KickStudentAsync(studentId));
+            await WaitUntil.True(() => client.Session.Status == SessionStatus.Idle, attempts: 80);
+            Assert.Equal(SessionStatus.Idle, client.Session.Status);
+            Assert.Empty(hub.GetStudentGroupIds(studentId));
+            Assert.Equal(StudentHubStatus.Disconnected, hub.Students.Single(s => s.Id == studentId).Status);
+        }
+        finally
+        {
+            cts.Cancel();
+            try { await runTask; } catch { }
+            client.Dispose();
+        }
     }
 }

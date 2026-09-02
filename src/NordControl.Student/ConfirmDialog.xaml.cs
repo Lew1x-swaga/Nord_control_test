@@ -13,8 +13,17 @@ public partial class ConfirmDialog : Window
         Owner = owner;
         TitleTextBlock.Text = title;
         CaptionTextBlock.Text = caption;
+        CaptionTextBlock.Visibility = string.IsNullOrWhiteSpace(caption)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         BodyTextBlock.Text = body;
         ConfirmButton.Content = confirmText;
+        Loaded += (_, _) =>
+        {
+            var workArea = SystemParameters.WorkArea;
+            Left = workArea.Left + Math.Max(0, (workArea.Width - ActualWidth) / 2);
+            Top = workArea.Top + 96;
+        };
     }
 
     private void ConfirmButton_Click(object sender, RoutedEventArgs e)

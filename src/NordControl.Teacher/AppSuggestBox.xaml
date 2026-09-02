@@ -7,6 +7,7 @@
                  Height="32" MinHeight="32"
                  Tag="Найти программу…"
                  TextChanged="QueryTextBox_TextChanged"
+                 PreviewMouseLeftButtonDown="QueryTextBox_PreviewMouseLeftButtonDown"
                  PreviewKeyDown="QueryTextBox_PreviewKeyDown"
                  GotFocus="QueryTextBox_GotFocus"/>
         <Popup x:Name="SuggestPopup"
